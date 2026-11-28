@@ -1098,6 +1098,24 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     )
   `).run().catch(() => {});
 
+  // 7b. Compteurs persistants KPI (préservent Revenus du mois / Cumulés même si la table transactions est vidée)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS billing_kpi_archive_counters (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      archived_month_key TEXT DEFAULT '',
+      archived_month_revenue_xof REAL DEFAULT 0,
+      archived_month_paid_count INTEGER DEFAULT 0,
+      archived_total_revenue_xof REAL DEFAULT 0,
+      archived_total_paid_count INTEGER DEFAULT 0,
+      archived_network_json TEXT DEFAULT '{}',
+      month_reset_after TEXT DEFAULT '',
+      total_reset_after TEXT DEFAULT '',
+      active_reset_after TEXT DEFAULT '',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare("INSERT OR IGNORE INTO billing_kpi_archive_counters (id) VALUES ('default')").run().catch(() => {});
+
   // S'assurer que les tables de livraison liées existent aussi (pour tests isolés ou DB neuve)
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS user_storage_quotas (
@@ -4369,6 +4387,138 @@ export async function handlePaystackBillingRoutes(
   if (path === '/api/payments/config' && method === 'GET') {
     const config = await readPaymentGatewayConfig(db, rawEnv);
     return jsonResponse({ success: true, config }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1a. POST /api/payments/verify-price — Vérification instantanée du prix réel en base D1 avant achat
+  // --------------------------------------------------------------------------
+  if (path === '/api/payments/verify-price' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const productType = String(body.productType || '').trim().toLowerCase() as PaymentProductType;
+    const productId = String(body.productId || '').trim();
+    const displayedAmountFcfa = Number(body.displayedAmountFcfa ?? body.amountFcfa ?? 0);
+    const billingCycle = String(body.billingCycle || 'monthly').trim().toLowerCase();
+    const paymentConfig = await readPaymentGatewayConfig(db, rawEnv);
+
+    if (!productType || !productId) {
+      return errorResponse('productType et productId requis.', 400, origin);
+    }
+
+    if (productType === 'storage' && (productId === 'storage_master_upgrade' || productId === 'storage_master_renew')) {
+      const masterCfg = await readStorageMasterCardConfig(db);
+      const authUser = await getAuthUser(request).catch(() => null);
+      const uid = String(authUser?.userId || '').trim();
+      const userState = await readStorageMasterUserState(db, uid, masterCfg);
+      const action: 'upgrade' | 'renew' = productId === 'storage_master_renew' ? 'renew' : 'upgrade';
+      const targetPaidMb = Number(body.targetPaidMb || userState.paidMb || 0);
+      const quote = computeStorageMasterQuote(masterCfg, userState, action, targetPaidMb);
+      if (!quote.ok) {
+        return jsonResponse(
+          {
+            success: true,
+            isActive: masterCfg.enabled,
+            unavailableReason: quote.error,
+            paymentConfig,
+          },
+          200,
+          origin
+        );
+      }
+      const liveAmountFcfa = Math.max(0, Math.round(Number(quote.amountDueFcfa || 0)));
+      return jsonResponse(
+        {
+          success: true,
+          isActive: masterCfg.enabled,
+          liveAmountFcfa,
+          displayedAmountFcfa,
+          priceChanged: displayedAmountFcfa > 0 && Math.abs(liveAmountFcfa - Math.round(displayedAmountFcfa)) >= 1,
+          liveProductName: action === 'renew' ? `Renouvellement Stockage ${formatStorageMbFr(userState.paidMb)}` : `Stockage ${formatStorageMbFr(targetPaidMb)}`,
+          masterQuote: quote,
+          masterConfig: masterCfg,
+          userState,
+          paymentConfig,
+        },
+        200,
+        origin
+      );
+    }
+
+    let planRow: any = null;
+    let appRow: any = null;
+    if (productType === 'storage') {
+      planRow = await db.prepare('SELECT * FROM storage_subscription_plans WHERE id = ? LIMIT 1').bind(productId).first().catch(() => null);
+    } else if (productType === 'ai') {
+      planRow = await db.prepare('SELECT * FROM ai_subscription_plans WHERE id = ? LIMIT 1').bind(productId).first().catch(() => null);
+    } else if (productType === 'app') {
+      planRow = await db.prepare('SELECT * FROM app_subscription_plans WHERE id = ? LIMIT 1').bind(productId).first().catch(() => null);
+      if (planRow?.app_key) {
+        appRow = await db.prepare('SELECT * FROM monetized_apps WHERE app_key = ? LIMIT 1').bind(String(planRow.app_key)).first().catch(() => null);
+      }
+    }
+
+    if (!planRow) {
+      return jsonResponse(
+        {
+          success: true,
+          isActive: false,
+          unavailableReason: "Cette offre n'est plus disponible dans la base de données.",
+          paymentConfig,
+        },
+        200,
+        origin
+      );
+    }
+
+    const isActive = Number(planRow.is_active ?? 1) !== 0 && (!appRow || Number(appRow.is_active ?? 1) !== 0);
+    const flags = normalizePlanBillingFlags(planRow);
+    const resolved = resolvePlanPriceMajor(
+      planRow,
+      (flags.billingMode === 'infinite' ? 'infinite' : billingCycle) as any,
+      'XOF'
+    );
+    let liveAmountFcfa = Math.max(0, Math.round(Number(resolved.amountMajor || 0)));
+    let boosterQuote: any = null;
+
+    // Pour le stockage secondaire : si l'utilisateur a déjà un abonnement stockage actif, calculer le net exact prorata booster
+    if (productType === 'storage' && flags.billingMode !== 'infinite') {
+      const authUser = await getAuthUser(request).catch(() => null);
+      const uid = String(authUser?.userId || '').trim();
+      if (uid) {
+        const masterCfg = await readStorageMasterCardConfig(db);
+        const uState = await readStorageMasterUserState(db, uid, masterCfg);
+        if (uState.paidMb > 0 && (uState.hasActiveSubscription || uState.inGrace) && !uState.isExpired) {
+          const addedMb = Math.max(0, Number(planRow.storage_mb || 0));
+          boosterQuote = computeStorageBoosterQuote(
+            masterCfg,
+            uState,
+            liveAmountFcfa,
+            addedMb,
+            resolved.durationDays,
+            flags.billingMode
+          );
+          liveAmountFcfa = Math.max(0, Math.round(Number(boosterQuote.amountDueFcfa || liveAmountFcfa)));
+        }
+      }
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        isActive,
+        unavailableReason: isActive ? null : 'Cette offre vient d’être désactivée par l’administrateur.',
+        liveAmountFcfa,
+        displayedAmountFcfa,
+        priceChanged: displayedAmountFcfa > 0 && Math.abs(liveAmountFcfa - Math.round(displayedAmountFcfa)) >= 1,
+        liveProductName: String(planRow.name || ''),
+        liveBillingMode: flags.billingMode,
+        liveDurationDays: resolved.durationDays,
+        livePlan: planRow,
+        boosterQuote,
+        paymentConfig,
+      },
+      200,
+      origin
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -8648,9 +8798,97 @@ export async function handlePaystackBillingRoutes(
 
   // --------------------------------------------------------------------------
   // 20d. SUPPRESSION DE DONNÉES ADMIN (ABONNEMENTS, TRANSACTIONS, LOGS EMAILS)
+  // Accepte DELETE et POST (.../delete) pour une fiabilité 100 % sur tous réseaux/proxies
   // --------------------------------------------------------------------------
-  const adminDeleteSubMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)$/);
-  if (adminDeleteSubMatch && method === 'DELETE') {
+  const archivePaidRowsBeforeDelete = async (rows: any[]) => {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    const toXof = (amt: number, cur?: string) => {
+      const c = String(cur || 'XOF').toUpperCase();
+      if (c === 'USD') return Math.round(amt * 650);
+      if (c === 'EUR') return Math.round(amt * 655.957);
+      return Math.round(amt);
+    };
+    const kpiRow: any =
+      (await db.prepare("SELECT * FROM billing_kpi_archive_counters WHERE id = 'default' LIMIT 1").first().catch(() => null)) ||
+      {};
+    let archMonthKey = String(kpiRow.archived_month_key || '');
+    let archMonthRev = archMonthKey === nowMonth ? Number(kpiRow.archived_month_revenue_xof || 0) : 0;
+    let archMonthCnt = archMonthKey === nowMonth ? Number(kpiRow.archived_month_paid_count || 0) : 0;
+    let archTotalRev = Number(kpiRow.archived_total_revenue_xof || 0);
+    let archTotalCnt = Number(kpiRow.archived_total_paid_count || 0);
+    const monthResetAfter = String(kpiRow.month_reset_after || '');
+    const totalResetAfter = String(kpiRow.total_reset_after || '');
+    let netObj: Record<string, { count: number; total_xof: number }> = {};
+    try {
+      netObj = JSON.parse(String(kpiRow.archived_network_json || '{}')) || {};
+    } catch {
+      netObj = {};
+    }
+
+    let changed = false;
+    for (const r of rows) {
+      const st = String(r.status || '').toLowerCase();
+      if (st !== 'paid' && st !== 'completed' && st !== 'approved') continue;
+      const amt = Number(r.paid_amount > 0 ? r.paid_amount : r.expected_amount || r.amount || r.price_paid || 0);
+      const xof = toXof(amt, r.currency);
+      const paidAt = String(r.fulfilled_at || r.updated_at || r.created_at || '');
+      const netKey = String(r.network_label || (r.provider === 'manual_receipt' ? 'Reçu manuel' : 'Paystack'));
+
+      if (!totalResetAfter || paidAt >= totalResetAfter) {
+        archTotalRev += xof;
+        archTotalCnt += 1;
+        if (!netObj[netKey]) netObj[netKey] = { count: 0, total_xof: 0 };
+        netObj[netKey].count += 1;
+        netObj[netKey].total_xof += xof;
+        changed = true;
+      }
+      if (paidAt.startsWith(nowMonth) && (!monthResetAfter || paidAt >= monthResetAfter)) {
+        archMonthKey = nowMonth;
+        archMonthRev += xof;
+        archMonthCnt += 1;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await db
+        .prepare(
+          `INSERT INTO billing_kpi_archive_counters (
+             id, archived_month_key, archived_month_revenue_xof, archived_month_paid_count,
+             archived_total_revenue_xof, archived_total_paid_count, archived_network_json,
+             month_reset_after, total_reset_after, active_reset_after, updated_at
+           ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(id) DO UPDATE SET
+             archived_month_key = excluded.archived_month_key,
+             archived_month_revenue_xof = excluded.archived_month_revenue_xof,
+             archived_month_paid_count = excluded.archived_month_paid_count,
+             archived_total_revenue_xof = excluded.archived_total_revenue_xof,
+             archived_total_paid_count = excluded.archived_total_paid_count,
+             archived_network_json = excluded.archived_network_json,
+             updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(
+          archMonthKey || nowMonth,
+          archMonthRev,
+          archMonthCnt,
+          archTotalRev,
+          archTotalCnt,
+          JSON.stringify(netObj),
+          monthResetAfter,
+          totalResetAfter,
+          String(kpiRow.active_reset_after || '')
+        )
+        .run()
+        .catch(() => {});
+    }
+  };
+
+  const adminDeleteSubMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+?)(?:\/delete)?$/);
+  if (
+    adminDeleteSubMatch &&
+    ((method === 'DELETE' && !path.endsWith('/delete')) || (method === 'POST' && path.endsWith('/delete')))
+  ) {
     const subId = decodeURIComponent(adminDeleteSubMatch[1]);
     await db.prepare('DELETE FROM subscription_events WHERE subscription_id = ?').bind(subId).run().catch(() => {});
     const delRes: any = await db.prepare('DELETE FROM active_subscriptions WHERE id = ?').bind(subId).run();
@@ -8696,31 +8934,117 @@ export async function handlePaystackBillingRoutes(
     return jsonResponse({ success: true, deletedCount }, 200, origin);
   }
 
-  const adminDeleteTxMatch = path.match(/^\/api\/admin\/billing\/transactions\/([^/]+)$/);
-  if (adminDeleteTxMatch && method === 'DELETE') {
+  const adminDeleteTxMatch = path.match(/^\/api\/admin\/billing\/transactions\/([^/]+?)(?:\/delete)?$/);
+  if (
+    adminDeleteTxMatch &&
+    adminDeleteTxMatch[1] !== 'bulk-delete' &&
+    ((method === 'DELETE' && !path.endsWith('/delete')) || (method === 'POST' && path.endsWith('/delete')))
+  ) {
     const refOrId = decodeURIComponent(adminDeleteTxMatch[1]);
-    const delRes: any = await db
-      .prepare('DELETE FROM payment_transactions WHERE reference = ? OR id = ?')
+    let deletedCount = 0;
+
+    // 1. Cas transaction issue de storage_upgrade_requests (`MANUAL_...`)
+    if (refOrId.startsWith('MANUAL_')) {
+      const reqId = refOrId.slice('MANUAL_'.length);
+      const mr: any = await db
+        .prepare('SELECT * FROM storage_upgrade_requests WHERE id = ? LIMIT 1')
+        .bind(reqId)
+        .first()
+        .catch(() => null);
+      if (mr) {
+        await archivePaidRowsBeforeDelete([
+          {
+            status: mr.status,
+            paid_amount: Number(mr.amount || mr.price_paid || mr.price || 0),
+            currency: mr.currency || 'XOF',
+            provider: 'manual_receipt',
+            network_label: mr.payment_method ? `Manuel · ${mr.payment_method}` : 'Reçu manuel',
+            updated_at: mr.updated_at,
+            created_at: mr.created_at,
+          },
+        ]);
+        const delM: any = await db.prepare('DELETE FROM storage_upgrade_requests WHERE id = ?').bind(reqId).run();
+        deletedCount += Number(delM?.meta?.changes || 0);
+      }
+    }
+
+    // 2. Cas transaction Paystack dans `payment_transactions` (archive les revenus AVANT suppression)
+    const txRows = await db
+      .prepare('SELECT * FROM payment_transactions WHERE reference = ? OR id = ?')
       .bind(refOrId, refOrId)
-      .run();
-    const deletedCount = Number(delRes?.meta?.changes || 0);
+      .all()
+      .catch(() => ({ results: [] }));
+    if ((txRows.results || []).length > 0) {
+      await archivePaidRowsBeforeDelete(txRows.results || []);
+      const delRes: any = await db
+        .prepare('DELETE FROM payment_transactions WHERE reference = ? OR id = ?')
+        .bind(refOrId, refOrId)
+        .run();
+      deletedCount += Number(delRes?.meta?.changes || 0);
+    }
+
     if (deletedCount === 0) return errorResponse('Transaction introuvable.', 404, origin);
     return jsonResponse({ success: true, deletedRef: refOrId, deletedCount }, 200, origin);
   }
 
   if (path === '/api/admin/billing/transactions/bulk-delete' && method === 'POST') {
     const body: any = await request.json().catch(() => ({}));
+    const mode = String(body.mode || '').trim().toLowerCase();
     const refs: string[] = Array.isArray(body.references)
       ? body.references.map((x: any) => String(x || '').trim()).filter(Boolean)
       : [];
     const statuses: string[] = Array.isArray(body.statuses)
       ? body.statuses
           .map((x: any) => String(x || '').trim().toLowerCase())
-          .filter((s: string) => ['failed', 'abandoned', 'pending', 'cancelled'].includes(s))
+          .filter((s: string) => ['failed', 'abandoned', 'pending', 'cancelled', 'initialized', 'rejected'].includes(s))
       : [];
     let deletedCount = 0;
-    if (refs.length > 0) {
+
+    if (mode === 'all') {
+      // Vider TOUTE la liste des transactions en bas tout en conservant intacts les KPIs Revenus en haut !
+      const allPaid = await db
+        .prepare("SELECT * FROM payment_transactions WHERE LOWER(status) IN ('paid', 'completed', 'approved')")
+        .all()
+        .catch(() => ({ results: [] }));
+      await archivePaidRowsBeforeDelete(allPaid.results || []);
+      const r1: any = await db.prepare('DELETE FROM payment_transactions').run().catch(() => null);
+      deletedCount += Number(r1?.meta?.changes || 0);
+
+      const allManual = await db
+        .prepare("SELECT * FROM storage_upgrade_requests WHERE LOWER(status) IN ('approved', 'completed', 'paid')")
+        .all()
+        .catch(() => ({ results: [] }));
+      await archivePaidRowsBeforeDelete(
+        (allManual.results || []).map((mr: any) => ({
+          status: mr.status,
+          paid_amount: Number(mr.amount || mr.price_paid || mr.price || 0),
+          currency: mr.currency || 'XOF',
+          provider: 'manual_receipt',
+          network_label: mr.payment_method ? `Manuel · ${mr.payment_method}` : 'Reçu manuel',
+          updated_at: mr.updated_at,
+          created_at: mr.created_at,
+        }))
+      );
+      const r2: any = await db.prepare('DELETE FROM storage_upgrade_requests').run().catch(() => null);
+      deletedCount += Number(r2?.meta?.changes || 0);
+    } else if (refs.length > 0) {
       for (const ref of refs.slice(0, 200)) {
+        if (ref.startsWith('MANUAL_')) {
+          const reqId = ref.slice('MANUAL_'.length);
+          const mr: any = await db.prepare('SELECT * FROM storage_upgrade_requests WHERE id = ?').bind(reqId).first().catch(() => null);
+          if (mr) {
+            await archivePaidRowsBeforeDelete([mr]);
+            const rm: any = await db.prepare('DELETE FROM storage_upgrade_requests WHERE id = ?').bind(reqId).run().catch(() => null);
+            deletedCount += Number(rm?.meta?.changes || 0);
+          }
+          continue;
+        }
+        const existing = await db
+          .prepare('SELECT * FROM payment_transactions WHERE reference = ? OR id = ?')
+          .bind(ref, ref)
+          .all()
+          .catch(() => ({ results: [] }));
+        await archivePaidRowsBeforeDelete(existing.results || []);
         const r: any = await db
           .prepare('DELETE FROM payment_transactions WHERE reference = ? OR id = ?')
           .bind(ref, ref)
@@ -8731,19 +9055,33 @@ export async function handlePaystackBillingRoutes(
     } else if (statuses.length > 0) {
       const ph = statuses.map(() => '?').join(',');
       const r: any = await db
-        .prepare(`DELETE FROM payment_transactions WHERE status IN (${ph})`)
+        .prepare(`DELETE FROM payment_transactions WHERE LOWER(status) IN (${ph})`)
         .bind(...statuses)
         .run();
-      deletedCount = Number(r?.meta?.changes || 0);
+      deletedCount += Number(r?.meta?.changes || 0);
+      const manualStatuses = statuses.filter((s) => ['pending', 'rejected', 'cancelled', 'failed'].includes(s));
+      if (manualStatuses.length > 0) {
+        const mph = manualStatuses.map(() => '?').join(',');
+        const rm: any = await db
+          .prepare(`DELETE FROM storage_upgrade_requests WHERE LOWER(status) IN (${mph})`)
+          .bind(...manualStatuses)
+          .run()
+          .catch(() => null);
+        deletedCount += Number(rm?.meta?.changes || 0);
+      }
     } else {
-      return errorResponse('Précisez des références ou des statuts (failed, abandoned, pending) à nettoyer.', 400, origin);
+      return errorResponse('Précisez des références, des statuts ou mode="all" à nettoyer.', 400, origin);
     }
     return jsonResponse({ success: true, deletedCount }, 200, origin);
   }
 
-  if (path === '/api/admin/billing/email-logs' && method === 'DELETE') {
-    const logId = String(url.searchParams.get('id') || '').trim();
-    const statusFilter = String(url.searchParams.get('status') || '').trim().toLowerCase();
+  if (
+    (path === '/api/admin/billing/email-logs' && method === 'DELETE') ||
+    (path === '/api/admin/billing/email-logs/delete' && method === 'POST')
+  ) {
+    const body: any = method === 'POST' ? await request.json().catch(() => ({})) : {};
+    const logId = String(url.searchParams.get('id') || body.id || '').trim();
+    const statusFilter = String(url.searchParams.get('status') || body.status || '').trim().toLowerCase();
     let delRes: any;
     if (logId) {
       delRes = await db.prepare('DELETE FROM billing_email_logs WHERE id = ?').bind(logId).run();
@@ -8957,8 +9295,31 @@ export async function handlePaystackBillingRoutes(
     return jsonResponse({ success: true, request: created, emailResult }, 200, origin);
   }
 
-  const adminDeleteDgMatch = path.match(/^\/api\/admin\/billing\/storage-downgrades\/([^/]+)$/);
-  if (adminDeleteDgMatch && method === 'DELETE') {
+  if (
+    (path === '/api/admin/billing/storage-downgrades' && method === 'DELETE') ||
+    (path === '/api/admin/billing/storage-downgrades/bulk-delete' && method === 'POST')
+  ) {
+    const body: any = method === 'POST' ? await request.json().catch(() => ({})) : {};
+    const statusFilter = String(url.searchParams.get('status') || body.status || '').trim().toLowerCase();
+    let delRes: any;
+    if (statusFilter && statusFilter !== 'all') {
+      delRes = await db
+        .prepare('DELETE FROM storage_downgrade_requests WHERE LOWER(status) = ?')
+        .bind(statusFilter)
+        .run();
+    } else {
+      delRes = await db.prepare('DELETE FROM storage_downgrade_requests').run();
+    }
+    return jsonResponse({ success: true, deletedCount: Number(delRes?.meta?.changes || 0) }, 200, origin);
+  }
+
+  const adminDeleteDgMatch = path.match(/^\/api\/admin\/billing\/storage-downgrades\/([^/]+?)(?:\/delete)?$/);
+  if (
+    adminDeleteDgMatch &&
+    adminDeleteDgMatch[1] !== 'create' &&
+    adminDeleteDgMatch[1] !== 'bulk-delete' &&
+    ((method === 'DELETE' && !path.endsWith('/delete')) || (method === 'POST' && path.endsWith('/delete')))
+  ) {
     const reqId = decodeURIComponent(adminDeleteDgMatch[1]);
     const delRes: any = await db.prepare('DELETE FROM storage_downgrade_requests WHERE id = ?').bind(reqId).run();
     const deletedCount = Number(delRes?.meta?.changes || 0);
@@ -9273,8 +9634,32 @@ export async function handlePaystackBillingRoutes(
     return jsonResponse({ success: outcome.ok, request: updated, refundOutcome: outcome, error: outcome.error || undefined }, 200, origin);
   }
 
-  const adminDeleteCrMatch = path.match(/^\/api\/admin\/billing\/cancellation-refunds\/([^/]+)$/);
-  if (adminDeleteCrMatch && method === 'DELETE') {
+  if (
+    (path === '/api/admin/billing/cancellation-refunds' && method === 'DELETE') ||
+    (path === '/api/admin/billing/cancellation-refunds/bulk-delete' && method === 'POST')
+  ) {
+    const body: any = method === 'POST' ? await request.json().catch(() => ({})) : {};
+    const statusFilter = String(url.searchParams.get('status') || body.status || '').trim().toLowerCase();
+    let delRes: any;
+    if (statusFilter && statusFilter !== 'all') {
+      delRes = await db
+        .prepare('DELETE FROM subscription_cancellation_refunds WHERE LOWER(status) = ?')
+        .bind(statusFilter)
+        .run();
+    } else {
+      delRes = await db.prepare('DELETE FROM subscription_cancellation_refunds').run();
+    }
+    return jsonResponse({ success: true, deletedCount: Number(delRes?.meta?.changes || 0) }, 200, origin);
+  }
+
+  const adminDeleteCrMatch = path.match(/^\/api\/admin\/billing\/cancellation-refunds\/([^/]+?)(?:\/delete)?$/);
+  if (
+    adminDeleteCrMatch &&
+    adminDeleteCrMatch[1] !== 'create' &&
+    adminDeleteCrMatch[1] !== 'preview' &&
+    adminDeleteCrMatch[1] !== 'bulk-delete' &&
+    ((method === 'DELETE' && !path.endsWith('/delete')) || (method === 'POST' && path.endsWith('/delete')))
+  ) {
     const crId = decodeURIComponent(adminDeleteCrMatch[1]);
     const delRes: any = await db
       .prepare('DELETE FROM subscription_cancellation_refunds WHERE id = ?')

@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_PAYMENT_GATEWAY_CONFIG,
+  readCachedPaymentGatewayConfig,
   normalizeClientBillingMode,
   normalizeClientCiPhone,
   formatBillingDurationBadge,
@@ -38,7 +40,9 @@ describe('paystackBillingApi pure helpers', () => {
     assert.match(manual90.label, /90 jours/);
   });
 
-  it('strictly hides manual payment button when admin disables manualReceiptEnabled', () => {
+  it('strictly hides manual payment button when admin disables manualReceiptEnabled and defaults to false (no 1s flash)', () => {
+    assert.equal(DEFAULT_PAYMENT_GATEWAY_CONFIG.manualReceiptEnabled, false);
+    assert.equal(readCachedPaymentGatewayConfig().manualReceiptEnabled, false);
     assert.equal(shouldShowManualReceiptButton({ manualReceiptEnabled: true }, true), true);
     assert.equal(shouldShowManualReceiptButton({ manualReceiptEnabled: false }, true), false);
     assert.equal(shouldShowManualReceiptButton({ manualReceiptEnabled: true }, false), false);

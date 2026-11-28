@@ -23,16 +23,18 @@ import {
   AppAccessResponse,
   AppSubscriptionPlanRecord,
   checkAppAccess,
-  DEFAULT_PAYMENT_GATEWAY_CONFIG,
   getMonetizedApps,
   getPaymentGatewayConfig,
   getStorageMasterCardStatus,
   MonetizedAppRecord,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
+  PaymentProductType,
+  readCachedPaymentGatewayConfig,
   shouldShowManualReceiptButton,
   startAppFreeTrial,
   StorageMasterStatusResponse,
+  verifyLiveProductPrice,
 } from '../services/paystackBillingApi';
 
 type MonetizedAppWithPlans = MonetizedAppRecord & { plans: AppSubscriptionPlanRecord[] };
@@ -342,64 +344,235 @@ export const PricingView: React.FC<PricingViewProps> = ({
   // État du plan sélectionné pour afficher le menu de souscription (reçu manuel)
   const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<SelectedPlan | null>(null);
 
-  // Configuration passerelle Paystack + Bouton « Payer manuellement » pilotés par l'admin
-  const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(DEFAULT_PAYMENT_GATEWAY_CONFIG);
+  // Configuration passerelle Paystack + Bouton « Payer manuellement » pilotés par l'admin (initialisé depuis cache serveur, défaut false => aucun flash)
+  const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(() =>
+    readCachedPaymentGatewayConfig()
+  );
   const [activeCustomPayment, setActiveCustomPayment] = useState<{
     target: StudyCloudPaymentTarget;
     manualPlan: SelectedPlan;
   } | null>(null);
+  const [verifyingOfferKey, setVerifyingOfferKey] = useState<string | null>(null);
+  const [liveSyncNotice, setLiveSyncNotice] = useState<{ type: 'info' | 'warn'; text: string } | null>(null);
 
-  // Charger dynamiquement les cartes de forfaits depuis Cloudflare D1 avec horodatage anti-cache
+  // Actualisation silencieuse en temps réel de toutes les cartes, tarifs et options passerelle depuis D1 (sans rechargement de page)
+  const refreshPricingLive = useCallback(
+    async (silent = true) => {
+      if (!silent) setLoadingPlans(true);
+      try {
+        const cfg = await getPaymentGatewayConfig(true);
+        setPaymentConfig(cfg);
+      } catch {
+        // Ignore
+      }
+
+      if (activeTab === 'apps') {
+        try {
+          const apps = await getMonetizedApps();
+          setMonetizedApps(apps);
+          setSelectedAppKey((prev) => {
+            if (prev && apps.some((a) => a.app_key === prev)) return prev;
+            if (initialAppKey && apps.some((a) => a.app_key === initialAppKey)) return initialAppKey;
+            return apps[0]?.app_key || '';
+          });
+        } catch {
+          // Ignore
+        } finally {
+          if (!silent) setLoadingPlans(false);
+        }
+        return;
+      }
+
+      const promises: Promise<any>[] = [
+        getSubscriptionPlans()
+          .then((res) => {
+            if (res && res.success) {
+              setDbStoragePlans(Array.isArray(res.storagePlans) ? res.storagePlans : []);
+              setDbAiPlans(Array.isArray(res.aiPlans) ? res.aiPlans : []);
+            }
+          })
+          .catch((err) => {
+            console.warn('[PricingView] Erreur chargement forfaits D1:', err);
+          }),
+      ];
+
+      if (activeTab === 'storage') {
+        promises.push(
+          getStorageMasterCardStatus()
+            .then((st) => {
+              if (st) setMasterStorageStatus(st);
+            })
+            .catch(() => {})
+        );
+      }
+
+      await Promise.allSettled(promises);
+      if (!silent) {
+        setTimeout(() => setLoadingPlans(false), 180);
+      }
+    },
+    [activeTab, initialAppKey]
+  );
+
+  // Vérification obligatoire du prix réel en base D1 juste avant l'ouverture du paiement
+  const handleStartVerifiedPayment = useCallback(
+    async (target: StudyCloudPaymentTarget, manualPlan: SelectedPlan) => {
+      const offerKey = `${target.productType}:${target.productId}:${target.targetPaidMb || 0}`;
+      if (verifyingOfferKey) return;
+      setVerifyingOfferKey(offerKey);
+      setLiveSyncNotice(null);
+      try {
+        const check = await verifyLiveProductPrice({
+          productType: target.productType,
+          productId: target.productId,
+          displayedAmountFcfa: target.amountFcfa,
+          billingCycle: target.billingCycle,
+          targetPaidMb: target.targetPaidMb,
+        });
+        if (check.paymentConfig) {
+          setPaymentConfig(check.paymentConfig);
+        }
+        if (check.success && check.isActive === false) {
+          refreshPricingLive(true);
+          setLiveSyncNotice({
+            type: 'warn',
+            text:
+              check.unavailableReason ||
+              "Cette offre vient d'être modifiée ou désactivée. Les cartes ont été actualisées.",
+          });
+          return;
+        }
+        let finalTarget = target;
+        let finalManual = manualPlan;
+        if (check.success && typeof check.liveAmountFcfa === 'number' && check.liveAmountFcfa > 0) {
+          const liveAmount = Math.round(check.liveAmountFcfa);
+          if (check.priceChanged) {
+            refreshPricingLive(true);
+            setLiveSyncNotice({
+              type: 'info',
+              text: `Tarif mis à jour automatiquement depuis la base de données : ${liveAmount.toLocaleString('fr-FR')} FCFA.`,
+            });
+            finalTarget = {
+              ...target,
+              amountFcfa: liveAmount,
+              productName: check.liveProductName || target.productName,
+              secondaryPriceDisplay: undefined,
+              billingMode: check.liveBillingMode || target.billingMode,
+              durationDays:
+                typeof check.liveDurationDays === 'number'
+                  ? check.liveDurationDays
+                  : target.durationDays,
+            };
+            finalManual = {
+              ...manualPlan,
+              price: liveAmount,
+              priceFcfa: liveAmount,
+              priceDisplay: `${liveAmount.toLocaleString('fr-FR')} FCFA`,
+            };
+          }
+        }
+        setActiveCustomPayment({ target: finalTarget, manualPlan: finalManual });
+      } finally {
+        setVerifyingOfferKey(null);
+      }
+    },
+    [verifyingOfferKey, refreshPricingLive]
+  );
+
+  const handleStartVerifiedManualPayment = useCallback(
+    async (
+      productType: PaymentProductType,
+      productId: string,
+      manualPlan: SelectedPlan,
+      opts?: { billingCycle?: string; targetPaidMb?: number }
+    ) => {
+      const offerKey = `manual:${productType}:${productId}`;
+      if (verifyingOfferKey) return;
+      setVerifyingOfferKey(offerKey);
+      setLiveSyncNotice(null);
+      try {
+        const check = await verifyLiveProductPrice({
+          productType,
+          productId,
+          displayedAmountFcfa: manualPlan.priceFcfa,
+          billingCycle: opts?.billingCycle || manualPlan.billingCycle,
+          targetPaidMb: opts?.targetPaidMb,
+        });
+        if (check.paymentConfig) {
+          setPaymentConfig(check.paymentConfig);
+          if (!check.paymentConfig.manualReceiptEnabled) {
+            refreshPricingLive(true);
+            setLiveSyncNotice({
+              type: 'warn',
+              text: 'Le paiement manuel par reçu vient d’être désactivé par l’administrateur.',
+            });
+            return;
+          }
+        }
+        if (check.success && check.isActive === false) {
+          refreshPricingLive(true);
+          setLiveSyncNotice({
+            type: 'warn',
+            text:
+              check.unavailableReason ||
+              "Cette offre n'est plus disponible. Les cartes ont été mises à jour.",
+          });
+          return;
+        }
+        let finalManual = manualPlan;
+        if (
+          check.success &&
+          typeof check.liveAmountFcfa === 'number' &&
+          check.liveAmountFcfa > 0 &&
+          check.priceChanged
+        ) {
+          const liveAmount = Math.round(check.liveAmountFcfa);
+          refreshPricingLive(true);
+          setLiveSyncNotice({
+            type: 'info',
+            text: `Tarif mis à jour automatiquement depuis la base de données : ${liveAmount.toLocaleString('fr-FR')} FCFA.`,
+          });
+          finalManual = {
+            ...manualPlan,
+            price: liveAmount,
+            priceFcfa: liveAmount,
+            priceDisplay: `${liveAmount.toLocaleString('fr-FR')} FCFA`,
+          };
+        }
+        setSelectedPlanForSubscription(finalManual);
+      } finally {
+        setVerifyingOfferKey(null);
+      }
+    },
+    [verifyingOfferKey, refreshPricingLive]
+  );
+
+  // Charger dynamiquement les cartes de forfaits depuis Cloudflare D1 à l'ouverture / changement d'onglet
   useEffect(() => {
-    let isMounted = true;
-    setLoadingPlans(true);
+    refreshPricingLive(false);
+  }, [refreshPricingLive]);
 
-    getPaymentGatewayConfig(true)
-      .then((cfg) => {
-        if (isMounted) setPaymentConfig(cfg);
-      })
-      .catch(() => {});
-
-    if (activeTab === 'apps') {
-      // Pour l'onglet Applications, charger uniquement la config passerelle (les apps sont chargées par loadMonetizedAppsCatalog)
-      setLoadingPlans(false);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    if (activeTab === 'storage') {
-      getStorageMasterCardStatus()
-        .then((st) => {
-          if (isMounted && st) setMasterStorageStatus(st);
-        })
-        .catch(() => {});
-    }
-
-    getSubscriptionPlans()
-      .then((res) => {
-        if (isMounted && res && res.success) {
-          const sPlans = Array.isArray(res.storagePlans) ? res.storagePlans : [];
-          const aPlans = Array.isArray(res.aiPlans) ? res.aiPlans : [];
-          setDbStoragePlans(sPlans);
-          setDbAiPlans(aPlans);
-        }
-      })
-      .catch((err) => {
-        console.warn('[PricingView] Erreur chargement forfaits D1:', err);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setTimeout(() => {
-            if (isMounted) setLoadingPlans(false);
-          }, 300);
-        }
-      });
-
-    return () => {
-      isMounted = false;
+  // Mise à jour automatique en direct des cartes & options admin sans recharger la page (focus, visibilité, toutes les 15s)
+  useEffect(() => {
+    if (activeCustomPayment || selectedPlanForSubscription) return;
+    const onFocusOrVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshPricingLive(true);
     };
-  }, [activeTab]);
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshPricingLive(true);
+    }, 15_000);
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+    window.addEventListener('studycloud_pricing_updated', onFocusOrVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+      window.removeEventListener('studycloud_pricing_updated', onFocusOrVisible);
+    };
+  }, [activeCustomPayment, selectedPlanForSubscription, refreshPricingLive]);
 
   // Resynchronisation instantanée de la Carte Maîtresse après tout paiement ou mise à jour d'abonnement
   useEffect(() => {
@@ -733,9 +906,10 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 {isPaystackAvailable ? (
                   <button
                     type="button"
+                    disabled={verifyingOfferKey !== null}
                     onClick={() =>
-                      setActiveCustomPayment({
-                        target: {
+                      handleStartVerifiedPayment(
+                        {
                           productType: type,
                           productId: plan.id,
                           productName: plan.name,
@@ -758,21 +932,23 @@ export const PricingView: React.FC<PricingViewProps> = ({
                           billingMode,
                           durationDays,
                         },
-                        manualPlan: isStorageBoosterMode
+                        isStorageBoosterMode
                           ? {
                               ...manualPlanObj,
                               price: boosterAmountDueFcfa,
                               priceFcfa: boosterAmountDueFcfa,
                               priceDisplay: `${boosterAmountDueFcfa.toLocaleString('fr-FR')} FCFA (prorata inclus)`,
                             }
-                          : manualPlanObj,
-                      })
+                          : manualPlanObj
+                      )
                     }
                     style={CAPSULE_CTA_STYLE}
-                    className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] hover:shadow-[0_14px_30px_-8px_rgba(255,109,41,0.7)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
+                    className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] hover:shadow-[0_14px_30px_-8px_rgba(255,109,41,0.7)] transition-all cursor-pointer active:scale-[0.98] disabled:opacity-65 flex items-center justify-between gap-2"
                   >
                     <span className="flex-1 text-center truncate px-1">
-                      {isStorageBoosterMode
+                      {verifyingOfferKey === `${type}:${plan.id}:0`
+                        ? 'Vérification du tarif...'
+                        : isStorageBoosterMode
                         ? `Ajouter +${lockedPerkText}`
                         : isInfinite
                         ? 'Obtenir à vie'
@@ -781,15 +957,24 @@ export const PricingView: React.FC<PricingViewProps> = ({
                         : 'Choisir cette offre'}
                     </span>
                     <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0 transition-transform duration-200 group-hover/cta:translate-x-0.5 group-hover/cta:-translate-y-0.5">
-                      <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                      {verifyingOfferKey === `${type}:${plan.id}:0` ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                      )}
                     </span>
                   </button>
                 ) : showManualUnderneath ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+                    disabled={verifyingOfferKey !== null}
+                    onClick={() =>
+                      handleStartVerifiedManualPayment(type, plan.id, manualPlanObj, {
+                        billingCycle: resolvedCycle,
+                      })
+                    }
                     style={CAPSULE_CTA_STYLE}
-                    className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
+                    className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] transition-all cursor-pointer active:scale-[0.98] disabled:opacity-65 flex items-center justify-between gap-2"
                   >
                     <span className="flex-1 text-center truncate px-1">Payer manuellement (reçu)</span>
                     <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0">
@@ -805,8 +990,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 {isPaystackAvailable && showManualUnderneath && (
                   <button
                     type="button"
-                    onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
-                    className="w-full py-2 px-3 rounded-full text-[11px] font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 border bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border-white/12"
+                    disabled={verifyingOfferKey !== null}
+                    onClick={() =>
+                      handleStartVerifiedManualPayment(type, plan.id, manualPlanObj, {
+                        billingCycle: resolvedCycle,
+                      })
+                    }
+                    className="w-full py-2 px-3 rounded-full text-[11px] font-semibold transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5 border bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border-white/12"
                   >
                     <Receipt className="w-3.5 h-3.5 text-[#FF8D52] shrink-0" />
                     <span>Payer manuellement (envoyer un reçu)</span>
@@ -970,13 +1160,14 @@ export const PricingView: React.FC<PricingViewProps> = ({
           {isPaystackAvailable ? (
             <button
               type="button"
+              disabled={verifyingOfferKey !== null}
               onClick={() =>
-                setActiveCustomPayment({
-                  target: {
+                handleStartVerifiedPayment(
+                  {
                     productType: 'app',
                     productId: plan.id,
                     productName: plan.name,
-                    appName: app.name,
+                    appKey: app.app_key,
                     subtitle: durationSummary,
                     description: plan.description || app.description || undefined,
                     features: activeFeatures.map((f) => f.text).filter(Boolean),
@@ -990,25 +1181,40 @@ export const PricingView: React.FC<PricingViewProps> = ({
                     billingMode,
                     durationDays,
                   },
-                  manualPlan: manualPlanObj,
-                })
+                  manualPlanObj
+                )
               }
               style={CAPSULE_CTA_STYLE}
-              className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] hover:shadow-[0_14px_30px_-8px_rgba(255,109,41,0.7)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
+              className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] hover:shadow-[0_14px_30px_-8px_rgba(255,109,41,0.7)] transition-all cursor-pointer active:scale-[0.98] disabled:opacity-65 flex items-center justify-between gap-2"
             >
               <span className="flex-1 text-center truncate px-1">
-                {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
+                {verifyingOfferKey === `app:${plan.id}:0`
+                  ? 'Vérification du tarif...'
+                  : isInfinite
+                  ? 'Obtenir à vie'
+                  : isAuto
+                  ? "S'abonner"
+                  : 'Choisir cette offre'}
               </span>
               <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0 transition-transform duration-200 group-hover/cta:translate-x-0.5 group-hover/cta:-translate-y-0.5">
-                <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                {verifyingOfferKey === `app:${plan.id}:0` ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
+                )}
               </span>
             </button>
           ) : showManualUnderneath ? (
             <button
               type="button"
-              onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+              disabled={verifyingOfferKey !== null}
+              onClick={() =>
+                handleStartVerifiedManualPayment('app', plan.id, manualPlanObj, {
+                  billingCycle: resolvedCycle,
+                })
+              }
               style={CAPSULE_CTA_STYLE}
-              className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
+              className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_24px_-8px_rgba(255,109,41,0.45)] transition-all cursor-pointer active:scale-[0.98] disabled:opacity-65 flex items-center justify-between gap-2"
             >
               <span className="flex-1 text-center truncate px-1">Payer manuellement (reçu)</span>
               <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0">
@@ -1024,8 +1230,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
           {isPaystackAvailable && showManualUnderneath && (
             <button
               type="button"
-              onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
-              className="w-full py-2 px-3 rounded-full text-[11px] font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 border bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border-white/12"
+              disabled={verifyingOfferKey !== null}
+              onClick={() =>
+                handleStartVerifiedManualPayment('app', plan.id, manualPlanObj, {
+                  billingCycle: resolvedCycle,
+                })
+              }
+              className="w-full py-2 px-3 rounded-full text-[11px] font-semibold transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5 border bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border-white/12"
             >
               <Receipt className="w-3.5 h-3.5 text-[#FF8D52] shrink-0" />
               <span>Payer manuellement (envoyer un reçu)</span>
@@ -1215,6 +1426,26 @@ export const PricingView: React.FC<PricingViewProps> = ({
         <div className="hidden md:block md:w-20 order-3 shrink-0"></div>
       </div>
 
+      {liveSyncNotice && (
+        <div
+          className={`flex-shrink-0 px-3 sm:px-6 py-2 text-xs font-semibold flex items-center justify-between gap-3 border-b ${
+            liveSyncNotice.type === 'warn'
+              ? 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+              : 'bg-amber-950/90 border-amber-500/40 text-amber-200'
+          }`}
+        >
+          <span>{liveSyncNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setLiveSyncNotice(null)}
+            className="p-1 rounded-lg hover:bg-white/10 cursor-pointer shrink-0"
+            aria-label="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* 2. ZONE DE CONTENU : LAYOUT BARRE LATÉRALE POUR APPLICATIONS OU MASONRY   */}
       {/* ========================================================================= */}
@@ -1386,10 +1617,22 @@ export const PricingView: React.FC<PricingViewProps> = ({
                             userState={masterStorageStatus.userState}
                             paymentConfig={paymentConfig}
                             onStartCustomPayment={(target, manualPlan) =>
-                              setActiveCustomPayment({ target, manualPlan })
+                              handleStartVerifiedPayment(target, manualPlan)
                             }
                             onStartManualPayment={(manualPlan) =>
-                              setSelectedPlanForSubscription(manualPlan)
+                              handleStartVerifiedManualPayment(
+                                'storage',
+                                manualPlan.mb && manualPlan.mb > 0
+                                  ? 'storage_master_upgrade'
+                                  : 'storage_master_renew',
+                                manualPlan,
+                                {
+                                  billingCycle: 'monthly',
+                                  targetPaidMb:
+                                    (masterStorageStatus.userState?.paidMb || 0) +
+                                    (manualPlan.mb || 0),
+                                }
+                              )
                             }
                           />
                         </div>

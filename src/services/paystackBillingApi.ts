@@ -340,15 +340,63 @@ export interface PendingPaystackReturnContext {
 }
 
 const PENDING_RETURN_CTX_KEY = 'studycloud_paystack_return_ctx_v1';
+const PAYMENT_GATEWAY_CFG_STORAGE_KEY = 'sc_payment_gateway_cfg_v1';
 
 export const DEFAULT_PAYMENT_GATEWAY_CONFIG: PaymentGatewayConfig = {
   provider: 'paystack',
   paystackEnabled: true,
-  manualReceiptEnabled: true,
+  manualReceiptEnabled: false,
   defaultCurrency: 'XOF',
   callbackUrl: 'https://studycloud.dkd-technologies.com/?payment=paystack-return',
   mode: 'test',
 };
+
+export interface VerifyLivePricePayload {
+  productType: PaymentProductType;
+  productId: string;
+  displayedAmountFcfa?: number;
+  billingCycle?: string;
+  targetPaidMb?: number;
+}
+
+export interface VerifyLivePriceResponse {
+  success: boolean;
+  isActive?: boolean;
+  unavailableReason?: string | null;
+  liveAmountFcfa?: number;
+  displayedAmountFcfa?: number;
+  priceChanged?: boolean;
+  liveProductName?: string;
+  liveBillingMode?: ClientBillingMode;
+  liveDurationDays?: number;
+  paymentConfig?: PaymentGatewayConfig;
+  error?: string;
+}
+
+export function readCachedPaymentGatewayConfig(): PaymentGatewayConfig {
+  if (cachedConfig?.data) return cachedConfig.data;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(PAYMENT_GATEWAY_CFG_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            provider: String(parsed.provider || 'paystack'),
+            paystackEnabled: parsed.paystackEnabled !== false,
+            manualReceiptEnabled: parsed.manualReceiptEnabled === true,
+            defaultCurrency: String(parsed.defaultCurrency || 'XOF').toUpperCase(),
+            callbackUrl: String(parsed.callbackUrl || DEFAULT_PAYMENT_GATEWAY_CONFIG.callbackUrl),
+            mode: parsed.mode || 'test',
+          };
+        }
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return DEFAULT_PAYMENT_GATEWAY_CONFIG;
+}
 
 // ============================================================================
 // HELPERS PURS (TESTABLES UNITAIREMENT)
@@ -512,13 +560,25 @@ function getBaseApi(): string {
 
 let cachedConfig: { data: PaymentGatewayConfig; fetchedAt: number } | null = null;
 
+function persistPaymentGatewayConfig(cfg: PaymentGatewayConfig): void {
+  cachedConfig = { data: cfg, fetchedAt: Date.now() };
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(PAYMENT_GATEWAY_CFG_STORAGE_KEY, JSON.stringify(cfg));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export async function getPaymentGatewayConfig(forceRefresh = false): Promise<PaymentGatewayConfig> {
-  if (!forceRefresh && cachedConfig && Date.now() - cachedConfig.fetchedAt < 15_000) {
+  if (!forceRefresh && cachedConfig && Date.now() - cachedConfig.fetchedAt < 10_000) {
     return cachedConfig.data;
   }
   try {
     const resp = await fetch(`${getBaseApi()}/api/payments/config?_t=${Date.now()}`, {
       method: 'GET',
+      cache: 'no-store',
       headers: getAuthHeaders(),
     });
     const json = await resp.json().catch(() => null);
@@ -531,13 +591,52 @@ export async function getPaymentGatewayConfig(forceRefresh = false): Promise<Pay
         callbackUrl: String(json.config.callbackUrl || DEFAULT_PAYMENT_GATEWAY_CONFIG.callbackUrl),
         mode: json.config.mode || 'test',
       };
-      cachedConfig = { data: cfg, fetchedAt: Date.now() };
+      persistPaymentGatewayConfig(cfg);
       return cfg;
     }
   } catch (err) {
     console.warn('[PaystackBillingApi] Erreur chargement config passerelle:', err);
   }
-  return cachedConfig?.data || DEFAULT_PAYMENT_GATEWAY_CONFIG;
+  return readCachedPaymentGatewayConfig();
+}
+
+export async function verifyLiveProductPrice(
+  payload: VerifyLivePricePayload
+): Promise<VerifyLivePriceResponse> {
+  try {
+    const resp = await fetch(`${getBaseApi()}/api/payments/verify-price?_t=${Date.now()}`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => null);
+    if (resp.ok && json?.success) {
+      if (json.paymentConfig) {
+        persistPaymentGatewayConfig({
+          provider: String(json.paymentConfig.provider || 'paystack'),
+          paystackEnabled: Boolean(json.paymentConfig.paystackEnabled),
+          manualReceiptEnabled: Boolean(json.paymentConfig.manualReceiptEnabled),
+          defaultCurrency: String(json.paymentConfig.defaultCurrency || 'XOF').toUpperCase(),
+          callbackUrl: String(
+            json.paymentConfig.callbackUrl || DEFAULT_PAYMENT_GATEWAY_CONFIG.callbackUrl
+          ),
+          mode: json.paymentConfig.mode || 'test',
+        });
+      }
+      return json as VerifyLivePriceResponse;
+    }
+    return {
+      success: false,
+      error: json?.error || 'Impossible de vérifier le tarif en base de données.',
+    };
+  } catch (err: any) {
+    console.warn('[PaystackBillingApi] Erreur vérification prix live:', err);
+    return {
+      success: false,
+      error: err?.message || 'Erreur réseau lors de la vérification du prix.',
+    };
+  }
 }
 
 export async function getMonetizedApps(): Promise<Array<MonetizedAppRecord & { plans: AppSubscriptionPlanRecord[] }>> {

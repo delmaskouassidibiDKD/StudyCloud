@@ -2626,3 +2626,159 @@ test('Étape 1 Finale — Abandon Réduction + Annulation/Remboursement auto net
   const aiSubAfter: any = await db.prepare('SELECT status FROM active_subscriptions WHERE id = ?').bind(verAi.subscription.id).first();
   assert.equal(aiSubAfter.status, 'cancelled');
 });
+
+test('Verify-price D1 en direct, archivage KPI revenus avant suppression transactions & routes POST .../delete fiables', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+  await db.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)').run();
+  await db.prepare("INSERT INTO users (id, name, email, phone) VALUES ('u-del', 'Mariam Bamba', 'mariam@studycloud.ci', '+2250701020304')").run();
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_active)
+       VALUES ('stor_live_1', 'PACK LIVE 1 GO', '1 Go', 1024, 1000, 'XOF', 'manual', 30, 1)`
+    )
+    .run();
+
+  const rawEnv = {
+    STUDYCLOUD_PAYSTACK_SECRET_KEY: 'sk_test_verify_and_del',
+    ADMIN_API_SECRET: 'admin_secret_verify_del_999',
+  };
+
+  const callApi = async (path: string, opts: { method?: string; admin?: boolean; body?: any } = {}) => {
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.admin ? { 'X-Admin-Key': rawEnv.ADMIN_API_SECRET } : {}),
+      },
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      getAuthUser: async () => ({ userId: 'u-del', email: 'mariam@studycloud.ci', name: 'Mariam Bamba' }),
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // 1. POST /api/payments/verify-price détecte les changements de prix en direct dans D1
+  const vpSame = await (
+    await callApi('/api/payments/verify-price', {
+      method: 'POST',
+      body: { productType: 'storage', productId: 'stor_live_1', displayedAmountFcfa: 1000 },
+    })
+  ).json();
+  assert.equal(vpSame.success, true);
+  assert.equal(vpSame.isActive, true);
+  assert.equal(vpSame.priceChanged, false);
+  assert.equal(vpSame.liveAmountFcfa, 1000);
+
+  // Admin modifie le tarif en base (1000 -> 1500 FCFA)
+  await db.prepare("UPDATE storage_subscription_plans SET price = 1500 WHERE id = 'stor_live_1'").run();
+  const vpChanged = await (
+    await callApi('/api/payments/verify-price', {
+      method: 'POST',
+      body: { productType: 'storage', productId: 'stor_live_1', displayedAmountFcfa: 1000 },
+    })
+  ).json();
+  assert.equal(vpChanged.success, true);
+  assert.equal(vpChanged.isActive, true);
+  assert.equal(vpChanged.priceChanged, true);
+  assert.equal(vpChanged.liveAmountFcfa, 1500);
+
+  // Admin désactive l'offre -> isActive = false
+  await db.prepare("UPDATE storage_subscription_plans SET is_active = 0 WHERE id = 'stor_live_1'").run();
+  const vpInactive = await (
+    await callApi('/api/payments/verify-price', {
+      method: 'POST',
+      body: { productType: 'storage', productId: 'stor_live_1', displayedAmountFcfa: 1500 },
+    })
+  ).json();
+  assert.equal(vpInactive.success, true);
+  assert.equal(vpInactive.isActive, false);
+
+  // 2. Suppression de transactions (unitaire & mode: 'all') archive les revenus payés dans billing_kpi_archive_counters
+  const nowIso = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO payment_transactions (reference, user_id, user_name, user_email, product_type, product_id, product_name, expected_amount, expected_amount_minor, paid_amount, currency, status, network_label, fulfilled_at, created_at)
+       VALUES ('SC-PAY-T1', 'u-del', 'Mariam Bamba', 'mariam@studycloud.ci', 'storage', 'stor_live_1', 'Pack 1 Go', 1000, 100000, 1000, 'XOF', 'paid', 'Wave', ?, ?)`
+    )
+    .bind(nowIso, nowIso)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO payment_transactions (reference, user_id, user_name, user_email, product_type, product_id, product_name, expected_amount, expected_amount_minor, paid_amount, currency, status, network_label, fulfilled_at, created_at)
+       VALUES ('SC-PAY-T2', 'u-del', 'Mariam Bamba', 'mariam@studycloud.ci', 'ai', 'ai_1', 'Pack IA', 500, 50000, 500, 'XOF', 'paid', 'Orange Money', ?, ?)`
+    )
+    .bind(nowIso, nowIso)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO payment_transactions (reference, user_id, user_name, user_email, product_type, product_id, product_name, expected_amount, expected_amount_minor, paid_amount, currency, status, network_label, created_at)
+       VALUES ('SC-PAY-T3', 'u-del', 'Mariam Bamba', 'mariam@studycloud.ci', 'ai', 'ai_1', 'Pack IA', 500, 50000, 0, 'XOF', 'failed', 'MTN MoMo', ?)`
+    )
+    .bind(nowIso)
+    .run();
+
+  // Suppression unitaire via POST .../delete -> archive 1000 FCFA Wave
+  const delOne = await (
+    await callApi('/api/admin/billing/transactions/SC-PAY-T1/delete', { method: 'POST', admin: true, body: {} })
+  ).json();
+  assert.equal(delOne.success, true);
+
+  // Vider toutes les transactions restantes via mode: 'all' -> archive 500 FCFA Orange Money (total = 1500 FCFA)
+  const delAll = await (
+    await callApi('/api/admin/billing/transactions/bulk-delete', { method: 'POST', admin: true, body: { mode: 'all' } })
+  ).json();
+  assert.equal(delAll.success, true);
+  assert.equal(delAll.deletedCount, 2);
+
+  const remTx: any = await db.prepare('SELECT COUNT(*) AS cnt FROM payment_transactions').first();
+  assert.equal(Number(remTx.cnt), 0, 'La liste des transactions en bas doit être vide');
+
+  const kpiArch: any = await db.prepare("SELECT * FROM billing_kpi_archive_counters WHERE id = 'default'").first();
+  assert.equal(Number(kpiArch.archived_total_revenue_xof), 1500, 'Les revenus cumulés doivent être conservés dans le compteur KPI');
+  assert.equal(Number(kpiArch.archived_total_paid_count), 2);
+  assert.equal(Number(kpiArch.archived_month_revenue_xof), 1500, 'Les revenus du mois doivent être conservés dans le compteur KPI');
+  const netArch = JSON.parse(String(kpiArch.archived_network_json || '{}'));
+  assert.equal(netArch.Wave.total_xof, 1000);
+  assert.equal(netArch['Orange Money'].total_xof, 500);
+
+  // 3. Routes POST .../delete & bulk-delete sur abonnements, réductions, annulations & emails
+  await db
+    .prepare(
+      `INSERT INTO active_subscriptions (id, user_id, product_type, app_key, plan_id, plan_name, status, started_at, current_period_start) VALUES ('asub_del_1', 'u-del', 'storage', '', 'stor_live_1', 'Pack', 'cancelled', ?, ?)`
+    )
+    .bind(nowIso, nowIso)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO storage_downgrade_requests (id, user_id, current_paid_mb, target_paid_mb, current_monthly_price, target_monthly_price, consumed_prorata_amount, status) VALUES ('sdg_del_1', 'u-del', 1000, 500, 1000, 500, 100, 'completed')`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO subscription_cancellation_refunds (id, user_id, subscription_id, product_type, status) VALUES ('scr_del_1', 'u-del', 'asub_del_1', 'storage', 'refunded')`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO billing_email_logs (id, user_id, email_to, email_type, subject, delivery_status) VALUES ('em_del_1', 'u-del', 'mariam@studycloud.ci', 'test', 'Test', 'sent')`
+    )
+    .run();
+
+  const rSub = await (await callApi('/api/admin/billing/subscriptions/asub_del_1/delete', { method: 'POST', admin: true, body: {} })).json();
+  const rDg = await (await callApi('/api/admin/billing/storage-downgrades/bulk-delete', { method: 'POST', admin: true, body: { all: true } })).json();
+  const rCr = await (await callApi('/api/admin/billing/cancellation-refunds/bulk-delete', { method: 'POST', admin: true, body: { all: true } })).json();
+  const rEm = await (await callApi('/api/admin/billing/email-logs/delete', { method: 'POST', admin: true, body: { all: true } })).json();
+
+  assert.equal(rSub.success, true);
+  assert.equal(rDg.success, true);
+  assert.equal(rCr.success, true);
+  assert.equal(rEm.success, true);
+});

@@ -885,6 +885,24 @@ async function ensureStorageTables(db) {
       ) VALUES ('default', 'paystack', 1, 1, 'XOF', 'https://studycloud.dkd-technologies.com/?payment=paystack-return')
     `).run().catch(() => {});
 
+    // Compteurs KPI persistants (conservent Revenus du mois / Cumulés même après vidage de la table transactions)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS billing_kpi_archive_counters (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        archived_month_key TEXT DEFAULT '',
+        archived_month_revenue_xof REAL DEFAULT 0,
+        archived_month_paid_count INTEGER DEFAULT 0,
+        archived_total_revenue_xof REAL DEFAULT 0,
+        archived_total_paid_count INTEGER DEFAULT 0,
+        archived_network_json TEXT DEFAULT '{}',
+        month_reset_after TEXT DEFAULT '',
+        total_reset_after TEXT DEFAULT '',
+        active_reset_after TEXT DEFAULT '',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare("INSERT OR IGNORE INTO billing_kpi_archive_counters (id) VALUES ('default')").run().catch(() => {});
+
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS monetized_apps (
         app_key TEXT PRIMARY KEY,
@@ -3365,6 +3383,10 @@ function renderDashboardHtml(data) {
   const aiCfg = data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 };
   const rc = data.robotRougeConfig || {};
   const cp = data.companyProfile || {};
+  const pgCfg = data.paymentGatewayConfig || { paystack_enabled: 1, manual_receipt_enabled: 0, default_currency: 'XOF' };
+  const pgCfgJson = JSON.stringify(pgCfg).replace(/</g, '\\u003c');
+  const pgPaystackChecked = Number(pgCfg.paystack_enabled ?? 1) !== 0;
+  const pgManualChecked = Number(pgCfg.manual_receipt_enabled ?? 0) !== 0;
   const safeAttr = (val, fallback = '') => {
     const s = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val) : fallback;
     return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3378,8 +3400,16 @@ function renderDashboardHtml(data) {
 <html lang="fr" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StudyCloud - Tableau de Bord Stockage R2 & D1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>StudyCloud — Tableau de bord</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#0c1220">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tableau de bord">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -3434,6 +3464,7 @@ function renderDashboardHtml(data) {
   </script>
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; background: radial-gradient(circle at top right, #0f172a 0%, #070b14 55%); }
+    .secret-masked { -webkit-text-security: disc; text-security: disc; }
     .neo-card {
       background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(11, 16, 29, 0.96));
       border: 1px solid rgba(51, 65, 85, 0.72);
@@ -3597,26 +3628,29 @@ function renderDashboardHtml(data) {
 
       <!-- Logo & Titre -->
       <div class="flex items-center gap-2.5 cursor-pointer" onclick="switchView('global')">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-base shadow-md shadow-orange-500/20">
-          ☁️
-        </div>
-        <div>
-          <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-2">
-            StudyCloud <span class="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold border border-orange-500/30" id="current-view-badge">Stockage R2 & D1</span>
-          </h1>
+        <img src="/icon-192.png" alt="StudyCloud" class="w-9 h-9 rounded-xl object-cover border border-orange-500/40 shadow-md shadow-orange-500/20 shrink-0 bg-slate-900" />
+        <div class="min-w-0">
+          <div class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-2 leading-tight">
+            <span>StudyCloud</span>
+            <span class="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold border border-orange-500/30" id="current-view-badge">Vue Globale</span>
+          </div>
+          <div class="text-[10px] font-bold text-orange-300/90 leading-tight tracking-wide">Tableau de bord</div>
         </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5 sm:gap-2">
+      <button type="button" onclick="triggerDashboardPwaInstall()" id="btn-install-dashboard-pwa" class="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 text-xs font-extrabold text-emerald-300 border border-emerald-500/40 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm" title="Installer le Tableau de bord sur PC ou téléphone">
+        <span>📲</span> <span class="hidden sm:inline">Installer</span>
+      </button>
       <button onclick="switchView('users')" class="px-2.5 py-1.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-xs font-bold text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
-        <span>👥</span> <span class="hidden md:inline">Consommation Utilisateurs</span>
+        <span>👥</span> <span class="hidden lg:inline">Consommation Utilisateurs</span>
       </button>
       <button onclick="manualRefreshLiveStats()" id="btn-manual-refresh" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
-        <span id="refresh-spinner">🔄</span> <span class="hidden sm:inline">Actualiser</span>
+        <span id="refresh-spinner">🔄</span> <span class="hidden md:inline">Actualiser</span>
       </button>
-      <a href="/api/overview" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5">
-        <span>📡</span> <span class="hidden sm:inline">API JSON</span>
+      <a href="/api/overview" target="_blank" class="hidden sm:flex px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 items-center gap-1.5">
+        <span>📡</span> <span class="hidden lg:inline">API JSON</span>
       </a>
     </div>
   </header>
@@ -3629,12 +3663,10 @@ function renderDashboardHtml(data) {
   <aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 bottom-0 z-50 w-72 sm:w-80 bg-[#0b1120]/98 backdrop-blur-xl border-r border-slate-800 flex flex-col shadow-2xl">
     <div class="p-4 border-b border-slate-800/90 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-orange-600/30">
-          SC
-        </div>
+        <img src="/icon-192.png" alt="StudyCloud" class="w-9 h-9 rounded-xl object-cover border border-orange-500/40 shadow-md shadow-orange-600/30 bg-slate-900" />
         <div>
-          <span class="font-extrabold text-white text-sm block leading-tight">Menu Admin</span>
-          <span class="text-[10px] text-slate-400">StudyCloud Control Center</span>
+          <span class="font-extrabold text-white text-sm block leading-tight">StudyCloud</span>
+          <span class="text-[10.5px] font-bold text-orange-300">Tableau de bord</span>
         </div>
       </div>
       <button type="button" onclick="toggleSidebar(false)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">
@@ -3647,6 +3679,17 @@ function renderDashboardHtml(data) {
         <input
           type="text"
           id="sidebar-nav-search"
+          name="sc_nofill_sidebar_nav"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-form-type="other"
+          data-no-autofill="1"
+          readonly
+          onfocus="this.removeAttribute('readonly')"
           oninput="filterSidebarNav()"
           placeholder="Rechercher un menu..."
           class="w-full bg-slate-950/90 text-slate-200 placeholder-slate-500 text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:outline-none focus:border-orange-500"
@@ -3847,16 +3890,24 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('profil-pro')" 
         id="nav-btn-profil-pro"
-        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">💼</span>
-        <span>Informations professionnelles</span>
+        <span class="text-base text-orange-400 group-hover:scale-110 transition-transform">🗂️</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white truncate">Cartes Stockage / IA &amp; Infos Pro</div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Forfaits Stockage, IA, contacts &amp; numéros</div>
+        </div>
       </button>
     </nav>
 
-    <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
-      <span>StudyCloud • DKD</span>
-      <span class="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">v2 Mobile</span>
+    <div class="p-3 border-t border-slate-800 space-y-2">
+      <button type="button" onclick="triggerDashboardPwaInstall()" id="btn-install-dashboard-pwa-sidebar" class="w-full py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/40 text-emerald-300 text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition">
+        <span>📲</span> <span>Télécharger l'app Tableau de bord</span>
+      </button>
+      <div class="text-[10.5px] text-slate-500 flex items-center justify-between px-1">
+        <span>StudyCloud • Tableau de bord</span>
+        <span class="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">PWA Mobile</span>
+      </div>
     </div>
   </aside>
 
@@ -3970,6 +4021,10 @@ function renderDashboardHtml(data) {
         <input 
           type="text" 
           id="global-search-input" 
+          name="sc_nofill_global_search"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+          readonly onfocus="this.removeAttribute('readonly')"
           placeholder="Rechercher une table D1 ou un dossier R2 (nom, rôle, connexion UI...)" 
           oninput="filterGlobalTables()"
           class="w-full bg-[#111827] text-slate-200 placeholder-slate-500 text-xs sm:text-sm rounded-xl px-4 py-2.5 pl-10 border border-slate-700 focus:outline-none focus:border-orange-500 transition-colors shadow-sm"
@@ -4016,6 +4071,10 @@ function renderDashboardHtml(data) {
             <input 
               type="text" 
               id="users-search-left" 
+              name="sc_nofill_users_left"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+              readonly onfocus="this.removeAttribute('readonly')"
               placeholder="Filtrer nom, numéro, école..." 
               oninput="filterUsersLeft()"
               class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
@@ -4084,6 +4143,10 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="demandes-search-input" 
+                name="sc_nofill_demandes_search"
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+                readonly onfocus="this.removeAttribute('readonly')"
                 placeholder="Rechercher nom, numéro, offre..." 
                 oninput="filterDemandesLeft()"
                 class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 pl-8 border border-slate-700 focus:outline-none focus:border-orange-500"
@@ -4165,6 +4228,10 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="demandes-ia-search-input" 
+                name="sc_nofill_demandes_ia_search"
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+                readonly onfocus="this.removeAttribute('readonly')"
                 placeholder="Rechercher nom, numéro, pack IA..." 
                 oninput="filterDemandesIaLeft()"
                 class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 pl-8 border border-slate-700 focus:outline-none focus:border-orange-500"
@@ -4334,7 +4401,7 @@ function renderDashboardHtml(data) {
           <div class="flex flex-wrap items-center gap-2.5">
             <!-- Interrupteur Paystack -->
             <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 cursor-pointer select-none hover:border-emerald-500/50 transition">
-              <input type="checkbox" id="toggle-paystack-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-emerald-500 cursor-pointer" checked />
+              <input type="checkbox" id="toggle-paystack-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-emerald-500 cursor-pointer" ${pgPaystackChecked ? 'checked' : ''} />
               <div>
                 <div class="text-[11px] font-extrabold text-white leading-tight">Paiement Paystack</div>
                 <div class="text-[9.5px] text-slate-400">Wave · Orange · MTN · Carte</div>
@@ -4343,10 +4410,10 @@ function renderDashboardHtml(data) {
 
             <!-- Interrupteur Bouton Payer manuellement dans l'application -->
             <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900/90 border border-amber-500/40 cursor-pointer select-none hover:border-amber-400 transition">
-              <input type="checkbox" id="toggle-manual-receipt-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-amber-500 cursor-pointer" checked />
+              <input type="checkbox" id="toggle-manual-receipt-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-amber-500 cursor-pointer" ${pgManualChecked ? 'checked' : ''} />
               <div>
                 <div class="text-[11px] font-extrabold text-amber-300 leading-tight">Bouton « Payer manuellement »</div>
-                <div id="manual-receipt-status-hint" class="text-[9.5px] text-slate-400">Affiché dans StudyCloud</div>
+                <div id="manual-receipt-status-hint" class="text-[9.5px] font-bold ${pgManualChecked ? 'text-emerald-400' : 'text-rose-400'}">${pgManualChecked ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud'}</div>
               </div>
             </label>
 
@@ -4359,25 +4426,37 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- KPIs Financiers -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div class="neo-card p-4 border-l-4 border-l-emerald-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus du mois</div>
+        <!-- KPIs Financiers (chacun indépendant avec son propre bouton Vider / Réinitialiser) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="neo-card p-4 border-l-4 border-l-emerald-500 relative">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="text-[10px] uppercase font-bold text-slate-400">Revenus du mois</div>
+              <button type="button" onclick="resetAdminPaymentKpi('month_revenue')" class="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer transition" title="Remettre à zéro les revenus du mois">🗑️ Vider</button>
+            </div>
             <div id="kpi-pay-month-rev" class="text-xl sm:text-2xl font-black text-emerald-400">0 FCFA</div>
             <div id="kpi-pay-month-count" class="text-[10px] text-slate-500 mt-1">0 paiement(s) confirmé(s)</div>
           </div>
-          <div class="neo-card p-4 border-l-4 border-l-sky-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus cumulés</div>
+          <div class="neo-card p-4 border-l-4 border-l-sky-500 relative">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="text-[10px] uppercase font-bold text-slate-400">Revenus cumulés</div>
+              <button type="button" onclick="resetAdminPaymentKpi('total_revenue')" class="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer transition" title="Remettre à zéro les revenus cumulés et la répartition réseaux">🗑️ Vider</button>
+            </div>
             <div id="kpi-pay-total-rev" class="text-xl sm:text-2xl font-black text-sky-400">0 FCFA</div>
             <div id="kpi-pay-total-count" class="text-[10px] text-slate-500 mt-1">0 transaction(s) réussie(s)</div>
           </div>
-          <div class="neo-card p-4 border-l-4 border-l-purple-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Accès Apps &amp; Abonnés actifs</div>
+          <div class="neo-card p-4 border-l-4 border-l-purple-500 relative">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="text-[10px] uppercase font-bold text-slate-400">Accès Apps &amp; Abonnés actifs</div>
+              <button type="button" onclick="resetAdminPaymentKpi('active_entitlements')" class="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer transition" title="Réinitialiser ce compteur sans couper les abonnés actifs">🗑️ Vider</button>
+            </div>
             <div id="kpi-pay-active-subs" class="text-xl sm:text-2xl font-black text-purple-400">0</div>
             <div id="kpi-pay-active-detail" class="text-[10px] text-slate-500 mt-1">Stockage + Applications</div>
           </div>
-          <div class="neo-card p-4 border-l-4 border-l-amber-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">En attente / Échouées</div>
+          <div class="neo-card p-4 border-l-4 border-l-amber-500 relative">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <div class="text-[10px] uppercase font-bold text-slate-400">En attente / Échouées</div>
+              <button type="button" onclick="resetAdminPaymentKpi('pending_failed')" class="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer transition" title="Supprimer toutes les transactions en attente et échouées">🗑️ Vider</button>
+            </div>
             <div id="kpi-pay-pending-count" class="text-xl sm:text-2xl font-black text-amber-400">0</div>
             <div class="text-[10px] text-slate-500 mt-1">Vérifiables en 1 clic sur Paystack</div>
           </div>
@@ -4398,7 +4477,7 @@ function renderDashboardHtml(data) {
         <div class="neo-card p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2.5">
             <div class="flex flex-wrap items-center gap-2">
-              <input id="tx-filter-search" type="text" oninput="renderAdminTransactionsTable()" placeholder="Rechercher nom, email, référence, réseau..." class="w-60 sm:w-72 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-emerald-500" />
+              <input id="tx-filter-search" name="sc_nofill_tx_search" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1" readonly onfocus="this.removeAttribute('readonly')" oninput="renderAdminTransactionsTable()" placeholder="Rechercher nom, email, référence, réseau..." class="w-60 sm:w-72 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-emerald-500" />
               <select id="tx-filter-category" onchange="renderAdminTransactionsTable()" class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-bold text-slate-200 outline-none">
                 <option value="all">Toutes catégories</option>
                 <option value="app">Applications</option>
@@ -4414,7 +4493,8 @@ function renderDashboardHtml(data) {
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <div id="tx-table-counter" class="text-[11px] font-bold text-slate-400">0 transaction</div>
-              <button type="button" onclick="bulkDeleteFailedAdminTransactions()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] font-black cursor-pointer" title="Supprimer les transactions échouées, abandonnées ou en attente">🧹 Nettoyer échouées / tests</button>
+              <button type="button" onclick="bulkDeleteFailedAdminTransactions()" class="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-[11px] font-bold cursor-pointer" title="Supprimer uniquement les transactions échouées, abandonnées ou en attente">🧹 Nettoyer échouées / tests</button>
+              <button type="button" onclick="bulkDeleteAllAdminTransactions()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] font-black cursor-pointer" title="Vider la liste des transactions en bas sans effacer les revenus en haut">🗑️ Vider les transactions</button>
             </div>
           </div>
 
@@ -4710,7 +4790,7 @@ function renderDashboardHtml(data) {
 
           <!-- Filtres -->
           <div class="neo-card p-3 flex flex-wrap items-center gap-2">
-            <input id="asub-filter-search" type="text" oninput="renderAdminActiveSubsTable()" placeholder="Rechercher nom, email, téléphone, forfait, app..." class="flex-1 min-w-[200px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
+            <input id="asub-filter-search" name="sc_nofill_asub_search" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1" readonly onfocus="this.removeAttribute('readonly')" oninput="renderAdminActiveSubsTable()" placeholder="Rechercher nom, email, téléphone, forfait, app..." class="flex-1 min-w-[200px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
             <select id="asub-filter-service" onchange="renderAdminActiveSubsTable()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none">
               <option value="all">Tous les services</option>
               <option value="storage">💾 Stockage Cloud</option>
@@ -4775,8 +4855,25 @@ function renderDashboardHtml(data) {
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <!-- Colonne gauche : Sélection abonné + Contrôle stockage réduit -->
               <div class="lg:col-span-7 space-y-3.5">
-                <div>
-                  <label class="block text-[10.5px] font-black uppercase text-slate-300 mb-1.5">1. Sélectionner l'utilisateur abonné au stockage</label>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <label class="block text-[10.5px] font-black uppercase text-slate-300">1. Rechercher &amp; sélectionner l'utilisateur abonné au stockage</label>
+                    <span id="dg-user-search-count" class="text-[10px] font-mono text-emerald-300"></span>
+                  </div>
+                  <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                    <input
+                      type="text"
+                      id="dg-user-search"
+                      name="sc_nofill_dg_user_search"
+                      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                      data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+                      readonly onfocus="this.removeAttribute('readonly')"
+                      oninput="filterAdminDowngradeSubscribers()"
+                      placeholder="Rechercher rapidement par nom, email ou téléphone..."
+                      class="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950 border border-emerald-500/40 text-xs text-white placeholder-slate-500 outline-none focus:border-emerald-400"
+                    />
+                  </div>
                   <select id="dg-user-select" onchange="onAdminDowngradeUserChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none focus:border-emerald-500">
                     <option value="">Chargement des abonnés stockage actifs...</option>
                   </select>
@@ -4864,7 +4961,10 @@ function renderDashboardHtml(data) {
           <div class="neo-card overflow-hidden">
             <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
               <h4 class="text-xs font-black text-white uppercase tracking-wider">📜 Historique des réductions de stockage envoyées</h4>
-              <span id="dg-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+              <div class="flex items-center gap-2">
+                <span id="dg-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+                <button type="button" onclick="clearAdminStorageDowngrades()" class="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[10.5px] font-black cursor-pointer" title="Vider tout l'historique des réductions de stockage">🗑️ Vider l'historique</button>
+              </div>
             </div>
             <div class="overflow-x-auto">
               <table class="responsive-admin-table w-full text-left text-xs">
@@ -4903,8 +5003,25 @@ function renderDashboardHtml(data) {
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <div class="lg:col-span-7 space-y-3.5 text-xs">
-                <div>
-                  <label class="block text-[10.5px] font-black uppercase text-slate-300 mb-1.5">1. Sélectionner l'abonnement actif (Stockage, Crédits IA ou Application)</label>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <label class="block text-[10.5px] font-black uppercase text-slate-300">1. Rechercher &amp; sélectionner l'abonnement actif (Stockage, Crédits IA ou App)</label>
+                    <span id="cr-sub-search-count" class="text-[10px] font-mono text-sky-300"></span>
+                  </div>
+                  <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                    <input
+                      type="text"
+                      id="cr-sub-search"
+                      name="sc_nofill_cr_sub_search"
+                      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                      data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+                      readonly onfocus="this.removeAttribute('readonly')"
+                      oninput="filterAdminCancelRefundSubs()"
+                      placeholder="Rechercher rapidement par nom, email, téléphone ou forfait..."
+                      class="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-950 border border-sky-500/40 text-xs text-white placeholder-slate-500 outline-none focus:border-sky-400"
+                    />
+                  </div>
                   <select id="cr-sub-select" onchange="onAdminCancelRefundSubChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none focus:border-sky-500">
                     <option value="">Chargement des abonnements actifs...</option>
                   </select>
@@ -4997,7 +5114,10 @@ function renderDashboardHtml(data) {
           <div class="neo-card overflow-hidden">
             <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
               <h4 class="text-xs font-black text-white uppercase tracking-wider">📜 Suivi des annulations &amp; remboursements</h4>
-              <span id="cr-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+              <div class="flex items-center gap-2">
+                <span id="cr-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+                <button type="button" onclick="clearAdminCancelRefunds()" class="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[10.5px] font-black cursor-pointer" title="Vider tout le suivi des annulations et remboursements">🗑️ Vider le suivi</button>
+              </div>
             </div>
             <div class="overflow-x-auto">
               <table class="responsive-admin-table w-full text-left text-xs">
@@ -5022,7 +5142,7 @@ function renderDashboardHtml(data) {
         <!-- PANEL 2 : CARTES BANCAIRES ENREGISTRÉES & PERMISSIONS AUTO -->
         <div id="asub-panel-cards" class="hidden space-y-3">
           <div class="neo-card p-3 flex flex-wrap items-center justify-between gap-2">
-            <input id="asub-cards-search" type="text" oninput="renderAdminSavedCardsTable()" placeholder="Rechercher utilisateur, email, banque, 4 derniers chiffres..." class="flex-1 min-w-[220px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
+            <input id="asub-cards-search" name="sc_nofill_cards_search" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1" readonly onfocus="this.removeAttribute('readonly')" oninput="renderAdminSavedCardsTable()" placeholder="Rechercher utilisateur, email, banque, 4 derniers chiffres..." class="flex-1 min-w-[220px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
             <span id="asub-cards-counter" class="text-[11px] font-bold text-slate-400 px-2">0 carte</span>
             <button type="button" onclick="loadAdminActiveSubscriptions()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer">🔄 Actualiser</button>
           </div>
@@ -5430,11 +5550,11 @@ function renderDashboardHtml(data) {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-              <span>💼</span>
-              <span>Informations Professionnelles & Comptes de Réception</span>
+              <span>💳</span>
+              <span>Cartes d'Abonnement Stockage / IA &amp; Infos Pro</span>
             </h3>
             <p class="text-xs text-slate-400 mt-0.5">
-              Ces coordonnées sont stockées dans Cloudflare D1. Les numéros Wave, Orange Money, MTN Money et Moov Money configurés ici s'affichent automatiquement aux utilisateurs lors du paiement de leur abonnement.
+              Créez et pilotez vos cartes d'abonnement Stockage &amp; Crédits IA, la Carte Maîtresse dynamique, ainsi que vos coordonnées officielles et comptes de réception Mobile Money.
             </p>
           </div>
           <div class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-bold shrink-0">
@@ -6607,10 +6727,13 @@ function renderDashboardHtml(data) {
               <span>Clé API Resend :</span>
             </span>
             <input 
-              type="password" 
+              type="text" 
               id="config-resend-api-key" 
+              name="sc_secret_resend_api_key"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              data-lpignore="true" data-1p-ignore="true" data-form-type="other"
               placeholder="re_... (Optionnel si active sur le Worker principal)" 
-              class="w-64 px-2.5 py-1 text-xs rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-orange-500"
+              class="secret-masked w-64 px-2.5 py-1 text-xs rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-orange-500"
             />
             <button 
               type="button" 
@@ -7077,11 +7200,14 @@ function renderDashboardHtml(data) {
             </div>
             <div class="relative">
               <input 
-                type="password" 
+                type="text" 
                 id="robot-cf-token" 
+                name="sc_secret_robot_cf_token"
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                data-lpignore="true" data-1p-ignore="true" data-form-type="other"
                 value="${safeAttr(rc.cf_ai_token, '')}"
                 placeholder="cfut_... ou laisser vide pour le binding AI natif" 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+                class="secret-masked w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
               >
               <button type="button" onclick="toggleSecretVisibility('robot-cf-token')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
             </div>
@@ -7439,6 +7565,10 @@ function renderDashboardHtml(data) {
           <input 
             type="text" 
             id="ia-user-search-input" 
+            name="sc_nofill_ia_user_search"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+            readonly onfocus="this.removeAttribute('readonly')"
             placeholder="Rechercher par nom, email, tél..." 
             oninput="filterFacturationUsers()"
             class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-700 hover:border-amber-500 focus:border-amber-500 outline-none transition"
@@ -7470,14 +7600,20 @@ function renderDashboardHtml(data) {
 
     <!-- JOURNAL D'AUDIT EN DIRECT (HISTORIQUE DES DÉBITS ET AJOUTS) -->
     <div class="neo-card p-4 sm:p-5 space-y-3 bg-slate-900/70 border border-slate-800">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div class="flex items-center gap-2 text-white font-bold text-sm">
           <span>📜</span>
-          <span>Historique & Audit des Consommations IA (50 dernières requêtes)</span>
+          <span>Historique &amp; Audit des Consommations IA</span>
+          <span id="ia-logs-total-badge" class="text-[10.5px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300"></span>
         </div>
-        <button type="button" onclick="loadFacturationIaLogs()" class="text-xs text-amber-400 hover:underline cursor-pointer flex items-center gap-1">
-          <span>🔄</span> <span>Rafraîchir les logs</span>
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" onclick="loadFacturationIaLogs()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-amber-400 font-bold cursor-pointer flex items-center gap-1">
+            <span>🔄</span> <span>Rafraîchir</span>
+          </button>
+          <button type="button" onclick="clearAllAiUsageLogs()" class="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/40 text-xs text-rose-300 font-black cursor-pointer flex items-center gap-1" title="Vider tout l'historique d'audit IA pour libérer la base D1">
+            <span>🗑️</span> <span>Vider l'historique</span>
+          </button>
+        </div>
       </div>
 
       <div class="overflow-x-auto max-h-72 overflow-y-auto custom-scrollbar">
@@ -7490,6 +7626,7 @@ function renderDashboardHtml(data) {
               <th class="py-2 px-3 text-center">Tokens</th>
               <th class="py-2 px-3 text-center">Crédits</th>
               <th class="py-2 px-3 text-right">Solde Après</th>
+              <th class="py-2 px-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody id="ia-logs-table-body" class="divide-y divide-slate-800/40 font-mono">
@@ -7711,6 +7848,10 @@ function renderDashboardHtml(data) {
           <input
             type="text"
             id="dkd-store-search-input"
+            name="sc_nofill_dkd_store_search"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+            readonly onfocus="this.removeAttribute('readonly')"
             oninput="onDkdStoreSearch(this.value)"
             placeholder="Rechercher rapidement une application, un site, un lien ou une catégorie..."
             class="w-full bg-slate-950/90 text-white text-xs rounded-xl pl-9 pr-9 py-2.5 border border-slate-700/80 hover:border-blue-500/60 focus:border-blue-500 outline-none transition"
@@ -7870,10 +8011,13 @@ function renderDashboardHtml(data) {
           </div>
           <div class="relative">
             <input 
-              type="password" 
+              type="text" 
               id="form-model-token" 
+              name="sc_secret_form_model_token"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              data-lpignore="true" data-1p-ignore="true" data-form-type="other"
               placeholder="sk-..." 
-              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition font-mono"
+              class="secret-masked w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition font-mono"
             >
             <button type="button" onclick="toggleSecretVisibility('form-model-token')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
           </div>
@@ -8608,6 +8752,10 @@ function renderDashboardHtml(data) {
         <input
           type="text"
           id="modal-all-cat-search"
+          name="sc_nofill_modal_cat_search"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+          readonly onfocus="this.removeAttribute('readonly')"
           oninput="renderAllCategoriesModalList()"
           placeholder="Chercher une catégorie..."
           class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:border-blue-500 outline-none"
@@ -8688,6 +8836,10 @@ function renderDashboardHtml(data) {
           <input
             type="text"
             id="modal-all-subcat-search"
+            name="sc_nofill_modal_subcat_search"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+            readonly onfocus="this.removeAttribute('readonly')"
             oninput="renderAllSubcategoriesModalList()"
             placeholder="Filtrer les sous-catégories..."
             class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:border-blue-500 outline-none"
@@ -8873,6 +9025,10 @@ function renderDashboardHtml(data) {
               <input
                 type="text"
                 id="dkd-rec-search-input"
+                name="sc_nofill_dkd_rec_search"
+                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-no-autofill="1"
+                readonly onfocus="this.removeAttribute('readonly')"
                 oninput="renderRecommendedSitesModal()"
                 placeholder="Chercher un site..."
                 class="w-full bg-slate-900 text-white text-xs rounded-xl pl-8 pr-3 py-1.5 border border-slate-700 focus:border-amber-500 outline-none"
@@ -9147,7 +9303,7 @@ function renderDashboardHtml(data) {
           abonnements: 'Transactions & Paiements Paystack',
           'apps-monetization': 'Applications Monétisées & Cartes de Prix',
           statistiques: 'Statistiques & Métriques',
-          'profil-pro': 'Informations professionnelles',
+          'profil-pro': 'Cartes Stockage / IA & Infos Pro',
           'alertes-stockage': 'Planification Alertes Stockage',
           'facturation-ia': 'Facturation & Quotas IA (Formule 2)',
           'dkd-store': 'DKD store — Sites, Pépites & Catégories'
@@ -15512,7 +15668,7 @@ function renderDashboardHtml(data) {
 
       try {
         const res = await fetch('/api/storage/alert-rules/delete', {
-          method: 'DELETE',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ threshold_percent: thresholdPercent })
         });
@@ -15641,8 +15797,8 @@ function renderDashboardHtml(data) {
       if (!logId) return;
       if (!confirm("Voulez-vous vraiment supprimer cet enregistrement d'alerte de la base de données ?")) return;
       try {
-        const res = await fetch('/api/storage/alert-logs', {
-          method: 'DELETE',
+        const res = await fetch('/api/storage/alert-logs/delete', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: logId })
         });
@@ -15670,8 +15826,8 @@ function renderDashboardHtml(data) {
 
       const idsToDelete = Array.from(selectedAlertLogIds);
       try {
-        const res = await fetch('/api/storage/alert-logs', {
-          method: 'DELETE',
+        const res = await fetch('/api/storage/alert-logs/delete', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids: idsToDelete })
         });
@@ -15701,8 +15857,8 @@ function renderDashboardHtml(data) {
       if (!confirm("⚠️ ATTENTION : Êtes-vous sûr de vouloir vider TOUT le journal des alertes envoyées ? Cette action effacera définitivement tous les enregistrements de la base de données D1.")) return;
 
       try {
-        const res = await fetch('/api/storage/alert-logs', {
-          method: 'DELETE',
+        const res = await fetch('/api/storage/alert-logs/delete', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ all: true })
         });
@@ -15941,7 +16097,7 @@ function renderDashboardHtml(data) {
     function toggleSecretVisibility(id) {
       const el = document.getElementById(id);
       if (!el) return;
-      el.type = el.type === 'password' ? 'text' : 'password';
+      el.classList.toggle('secret-masked');
     }
 
     function syncRobotRougeForm(cfg) {
@@ -17025,11 +17181,14 @@ function renderDashboardHtml(data) {
 
     async function loadFacturationIaLogs() {
       const tbody = document.getElementById('ia-logs-table-body');
+      const totalBadge = document.getElementById('ia-logs-total-badge');
       if (!tbody) return;
 
       try {
-        const res = await fetch('/api/ai/admin/logs');
+        const res = await fetch('/api/ai/admin/logs?_t=' + Date.now(), { cache: 'no-store' });
         const data = await res.json();
+        const totalCnt = Number(data && (data.totalCount !== undefined ? data.totalCount : (Array.isArray(data.logs) ? data.logs.length : 0)));
+        if (totalBadge) totalBadge.textContent = totalCnt + ' entrée' + (totalCnt > 1 ? 's' : '');
         if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
           let html = '';
           for (const l of data.logs) {
@@ -17043,6 +17202,7 @@ function renderDashboardHtml(data) {
             const userObj = (allUsers || []).find(u => (u.user?.id || u.id) === l.user_id);
             const displayName = userObj ? (userObj.user?.name || userObj.name || 'Étudiant') : (l.user_id || 'Étudiant');
             const displaySub = userObj ? (userObj.user?.email || userObj.user?.phone || '') : '';
+            const safeLogId = escapeHtml(String(l.id || ''));
 
             html += '<tr class="hover:bg-slate-800/30">';
             html += '<td class="py-2 px-3 text-slate-400 whitespace-nowrap">' + dateStr + '</td>';
@@ -17056,17 +17216,69 @@ function renderDashboardHtml(data) {
             html += '<td class="py-2 px-3 text-center text-slate-300">' + (l.total_tokens || 0) + '</td>';
             html += '<td class="py-2 px-3 text-center">' + creditBadge + '</td>';
             html += '<td class="py-2 px-3 text-right text-amber-300 font-bold">' + Number(l.balance_after || 0).toFixed(2) + '</td>';
+            html += '<td class="py-2 px-3 text-right whitespace-nowrap">' +
+              (safeLogId ? '<button type="button" onclick="deleteAiUsageLog(&quot;' + safeLogId + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer cette ligne d audit IA">🗑️</button>' : '') +
+              '</td>';
             html += '</tr>';
           }
           tbody.innerHTML = html;
         } else {
-          tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Aucun log récent</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-slate-500">Aucun log récent</td></tr>';
         }
       } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Prêt pour les nouvelles requêtes</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-slate-500">Prêt pour les nouvelles requêtes</td></tr>';
       }
     }
     window.loadFacturationIaLogs = loadFacturationIaLogs;
+
+    function deleteAiUsageLog(logId) {
+      if (!logId) return;
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette ligne d audit IA',
+        message: 'Retirer définitivement cette entrée de l historique de consommation IA dans D1 ? Les soldes de crédits des utilisateurs ne sont pas modifiés.',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch('/api/ai/admin/logs/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: logId })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur suppression');
+            showToast('🗑️ Entrée d audit IA supprimée.');
+            await loadFacturationIaLogs();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAiUsageLog = deleteAiUsageLog;
+
+    function clearAllAiUsageLogs() {
+      openAdminConfirmModal({
+        title: '🗑️ Vider tout l historique d audit IA',
+        message: 'Supprimer définitivement toutes les lignes de la table ai_usage_logs pour libérer la base de données D1 ? Les soldes de crédits actuels des utilisateurs restent intacts.',
+        confirmText: '🗑️ Vider tout l historique',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch('/api/ai/admin/logs/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ all: true })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur nettoyage');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' ligne(s) d audit IA supprimée(s) — base D1 libérée !');
+            await loadFacturationIaLogs();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.clearAllAiUsageLogs = clearAllAiUsageLogs;
 
     // ========================================================================
     // GESTION COMPLÈTE DU MENU DKD STORE (SITES, LOGOS, CATÉGORIES & CLASSEMENT)
@@ -18911,7 +19123,9 @@ function renderDashboardHtml(data) {
     // CENTRE DES TRANSACTIONS, CONFIGURATION PAYSTACK & MONÉTISATION DES APPS
     // =========================================================================
     let adminPaymentTransactions = [];
-    let adminPaymentConfig = { paystack_enabled: 1, manual_receipt_enabled: 1, default_currency: 'XOF' };
+    let adminPaymentConfig = ${pgCfgJson};
+    let isSavingPaymentGatewayConfig = false;
+    let paymentConfigSaveSeq = 0;
     let adminMonetizedApps = [];
     let adminAppPlansByKey = {};
     let adminAppEntitlementsByKey = {};
@@ -18960,23 +19174,25 @@ function renderDashboardHtml(data) {
         tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400">Chargement des transactions depuis D1...</td></tr>';
       }
       try {
-        const resp = await fetch('/api/admin/payments/overview?_t=' + Date.now());
+        const resp = await fetch('/api/admin/payments/overview?_t=' + Date.now(), { cache: 'no-store' });
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement transactions');
 
-        adminPaymentConfig = data.config || adminPaymentConfig;
         adminPaymentTransactions = Array.isArray(data.transactions) ? data.transactions : [];
 
-        // Mettre à jour les interrupteurs passerelle
-        const paystackCb = document.getElementById('toggle-paystack-enabled');
-        const manualCb = document.getElementById('toggle-manual-receipt-enabled');
-        const manualHint = document.getElementById('manual-receipt-status-hint');
-        if (paystackCb) paystackCb.checked = Number(adminPaymentConfig.paystack_enabled) !== 0;
-        const manualOn = Number(adminPaymentConfig.manual_receipt_enabled) !== 0;
-        if (manualCb) manualCb.checked = manualOn;
-        if (manualHint) {
-          manualHint.textContent = manualOn ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
-          manualHint.className = 'text-[9.5px] font-bold ' + (manualOn ? 'text-emerald-400' : 'text-rose-400');
+        // Ne pas écraser les cases à cocher pendant un enregistrement en cours (évite tout va-et-vient visuel)
+        if (!isSavingPaymentGatewayConfig && data.config) {
+          adminPaymentConfig = data.config;
+          const paystackCb = document.getElementById('toggle-paystack-enabled');
+          const manualCb = document.getElementById('toggle-manual-receipt-enabled');
+          const manualHint = document.getElementById('manual-receipt-status-hint');
+          if (paystackCb) paystackCb.checked = Number(adminPaymentConfig.paystack_enabled) !== 0;
+          const manualOn = Number(adminPaymentConfig.manual_receipt_enabled) !== 0;
+          if (manualCb) manualCb.checked = manualOn;
+          if (manualHint) {
+            manualHint.textContent = manualOn ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
+            manualHint.className = 'text-[9.5px] font-bold ' + (manualOn ? 'text-emerald-400' : 'text-rose-400');
+          }
         }
 
         // KPIs
@@ -19027,16 +19243,25 @@ function renderDashboardHtml(data) {
     window.loadAdminPaymentsOverview = loadAdminPaymentsOverview;
 
     async function savePaymentGatewayConfigAdmin() {
-      const paystackOn = document.getElementById('toggle-paystack-enabled')?.checked ? 1 : 0;
-      const manualOn = document.getElementById('toggle-manual-receipt-enabled')?.checked ? 1 : 0;
+      const paystackCb = document.getElementById('toggle-paystack-enabled');
+      const manualCb = document.getElementById('toggle-manual-receipt-enabled');
       const manualHint = document.getElementById('manual-receipt-status-hint');
+      const paystackOn = paystackCb?.checked ? 1 : 0;
+      const manualOn = manualCb?.checked ? 1 : 0;
+      const prevCfg = Object.assign({}, adminPaymentConfig);
+
+      isSavingPaymentGatewayConfig = true;
+      const mySeq = ++paymentConfigSaveSeq;
+      if (paystackCb) paystackCb.disabled = true;
+      if (manualCb) manualCb.disabled = true;
       if (manualHint) {
-        manualHint.textContent = manualOn ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
-        manualHint.className = 'text-[9.5px] font-bold ' + (manualOn ? 'text-emerald-400' : 'text-rose-400');
+        manualHint.textContent = 'Enregistrement...';
+        manualHint.className = 'text-[9.5px] font-bold text-amber-300';
       }
       try {
         const resp = await fetch('/api/admin/payments/config', {
           method: 'POST',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             paystack_enabled: paystackOn,
@@ -19045,12 +19270,38 @@ function renderDashboardHtml(data) {
         });
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Échec enregistrement');
-        adminPaymentConfig = data.config || adminPaymentConfig;
-        showToast(manualOn
-          ? '✓ Bouton « Payer manuellement » ACTIVÉ dans StudyCloud'
-          : '✓ Bouton « Payer manuellement » DÉSACTIVÉ dans StudyCloud (Paystack seul)');
+        if (mySeq === paymentConfigSaveSeq) {
+          adminPaymentConfig = data.config || { paystack_enabled: paystackOn, manual_receipt_enabled: manualOn, default_currency: 'XOF' };
+          const confirmedPaystack = Number(adminPaymentConfig.paystack_enabled) !== 0;
+          const confirmedManual = Number(adminPaymentConfig.manual_receipt_enabled) !== 0;
+          if (paystackCb) paystackCb.checked = confirmedPaystack;
+          if (manualCb) manualCb.checked = confirmedManual;
+          if (manualHint) {
+            manualHint.textContent = confirmedManual ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
+            manualHint.className = 'text-[9.5px] font-bold ' + (confirmedManual ? 'text-emerald-400' : 'text-rose-400');
+          }
+          showToast(confirmedManual
+            ? '✓ Bouton « Payer manuellement » ACTIVÉ dans StudyCloud'
+            : '✓ Bouton « Payer manuellement » DÉSACTIVÉ dans StudyCloud (Paystack seul)');
+        }
       } catch (err) {
+        if (mySeq === paymentConfigSaveSeq) {
+          adminPaymentConfig = prevCfg;
+          const prevManual = Number(prevCfg.manual_receipt_enabled) !== 0;
+          if (paystackCb) paystackCb.checked = Number(prevCfg.paystack_enabled) !== 0;
+          if (manualCb) manualCb.checked = prevManual;
+          if (manualHint) {
+            manualHint.textContent = prevManual ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
+            manualHint.className = 'text-[9.5px] font-bold ' + (prevManual ? 'text-emerald-400' : 'text-rose-400');
+          }
+        }
         showToast('⚠️ Erreur config passerelle : ' + (err.message || err));
+      } finally {
+        if (mySeq === paymentConfigSaveSeq) {
+          isSavingPaymentGatewayConfig = false;
+          if (paystackCb) paystackCb.disabled = false;
+          if (manualCb) manualCb.disabled = false;
+        }
       }
     }
     window.savePaymentGatewayConfigAdmin = savePaymentGatewayConfigAdmin;
@@ -20575,7 +20826,11 @@ function renderDashboardHtml(data) {
         confirmText: '🗑️ Supprimer définitivement',
         onConfirm: async function() {
           try {
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId), { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}'
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur suppression');
             showToast('🗑️ Abonnement supprimé définitivement.');
@@ -20612,18 +20867,22 @@ function renderDashboardHtml(data) {
     }
     window.bulkDeleteCancelledAdminSubs = bulkDeleteCancelledAdminSubs;
 
-    // --- SUPPRESSION TRANSACTIONS ---
+    // --- SUPPRESSION TRANSACTIONS (CONSERVE LES KPI REVENUS EN HAUT) ---
     function deleteAdminTransaction(ref) {
       openAdminConfirmModal({
         title: '🗑️ Supprimer cette transaction',
-        message: 'Supprimer définitivement la transaction « ' + ref + ' » de la table payment_transactions ?',
+        message: 'Retirer la transaction « ' + ref + ' » de la liste ci-dessous ? Les compteurs Revenus du mois, Revenus cumulés et Répartition par réseau en haut restent conservés.',
         confirmText: '🗑️ Supprimer',
         onConfirm: async function() {
           try {
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/transactions/' + encodeURIComponent(ref), { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/transactions/' + encodeURIComponent(ref) + '/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}'
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur suppression');
-            showToast('🗑️ Transaction supprimée.');
+            showToast('🗑️ Transaction supprimée (KPI revenus conservés).');
             await loadAdminPaymentsOverview();
           } catch (err) {
             showToast('⚠️ ' + (err.message || err));
@@ -20636,7 +20895,7 @@ function renderDashboardHtml(data) {
     function bulkDeleteFailedAdminTransactions() {
       openAdminConfirmModal({
         title: '🧹 Nettoyer les transactions échouées / en attente',
-        message: 'Supprimer définitivement toutes les transactions échouées, abandonnées ou en attente (tests) ? Toutes les transactions payées sont conservées.',
+        message: 'Supprimer définitivement toutes les transactions échouées, abandonnées ou en attente (tests) ? Toutes les transactions payées et vos revenus sont conservés.',
         confirmText: '🧹 Nettoyer les échecs',
         onConfirm: async function() {
           try {
@@ -20657,6 +20916,74 @@ function renderDashboardHtml(data) {
     }
     window.bulkDeleteFailedAdminTransactions = bulkDeleteFailedAdminTransactions;
 
+    function bulkDeleteAllAdminTransactions() {
+      openAdminConfirmModal({
+        title: '🗑️ Vider la liste des transactions',
+        message: 'Vider toutes les lignes de transactions affichées en bas pour alléger la base D1 ? Vos compteurs en haut (Revenus du mois, Revenus cumulés, Répartition par réseau) sont archivés et conservés intacts.',
+        confirmText: '🗑️ Vider la liste en bas',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/transactions/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'all' })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur nettoyage');
+            showToast('🗑️ ' + (data.deletedCount || 0) + ' transaction(s) vidée(s) — les KPI revenus en haut sont conservés !');
+            await loadAdminPaymentsOverview();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.bulkDeleteAllAdminTransactions = bulkDeleteAllAdminTransactions;
+
+    function resetAdminPaymentKpi(scope) {
+      const labels = {
+        month_revenue: {
+          title: '🗑️ Vider « Revenus du mois »',
+          message: 'Remettre à 0 FCFA uniquement le compteur « Revenus du mois » ? Les revenus cumulés et vos transactions en bas restent intacts.'
+        },
+        total_revenue: {
+          title: '🗑️ Vider « Revenus cumulés »',
+          message: 'Remettre à 0 FCFA le compteur « Revenus cumulés » ainsi que la répartition par réseau de paiement ?'
+        },
+        active_entitlements: {
+          title: '🗑️ Réinitialiser « Accès Apps & Abonnés actifs »',
+          message: 'Remettre à zéro le compteur affiché sur cette carte et purger les anciens accès révoqués/expirés ? (Les abonnés actifs ne sont pas coupés).'
+        },
+        pending_failed: {
+          title: '🗑️ Vider « En attente / Échouées »',
+          message: 'Supprimer définitivement toutes les transactions en attente, échouées ou abandonnées de la base D1 ?'
+        }
+      };
+      const cfg = labels[scope];
+      if (!cfg) return;
+      openAdminConfirmModal({
+        title: cfg.title,
+        message: cfg.message,
+        confirmText: '🗑️ Confirmer la remise à zéro',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch('/api/admin/payments/kpi-reset', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scope: scope })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur remise à zéro');
+            showToast('✅ ' + (data.message || 'Compteur réinitialisé.'));
+            await loadAdminPaymentsOverview();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.resetAdminPaymentKpi = resetAdminPaymentKpi;
+
     // --- SUPPRESSION JOURNAL EMAILS ---
     function deleteAdminEmailLog(logId) {
       openAdminConfirmModal({
@@ -20665,7 +20992,11 @@ function renderDashboardHtml(data) {
         confirmText: '🗑️ Supprimer',
         onConfirm: async function() {
           try {
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs?id=' + encodeURIComponent(logId), { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: logId })
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
             showToast('🗑️ Entrée email supprimée.');
@@ -20688,8 +21019,11 @@ function renderDashboardHtml(data) {
         confirmText: isFailedOnly ? '🧹 Supprimer les échecs' : '🗑️ Tout vider',
         onConfirm: async function() {
           try {
-            const qs = isFailedOnly ? '?status=failed' : '';
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs' + qs, { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(isFailedOnly ? { status: 'failed' } : { all: true })
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
             showToast('🧹 ' + (data.deletedCount || 0) + ' entrée(s) supprimée(s).');
@@ -20857,11 +21191,51 @@ function renderDashboardHtml(data) {
       return Math.round(n) + ' Mo';
     }
 
-    async function loadAdminStorageDowngrades() {
+    function filterAdminDowngradeSubscribers() {
       const sel = document.getElementById('dg-user-select');
+      const countEl = document.getElementById('dg-user-search-count');
+      if (!sel) return;
+      const prevVal = sel.value;
+      const q = String(document.getElementById('dg-user-search')?.value || '').trim().toLowerCase();
+      const filtered = adminDowngradeSubscribers.filter(function(u) {
+        if (!q) return true;
+        const hay = [u.userName, u.userEmail, u.userPhone, u.userId].join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+      if (countEl) {
+        countEl.textContent = q
+          ? (filtered.length + ' / ' + adminDowngradeSubscribers.length + ' trouvé(s)')
+          : (adminDowngradeSubscribers.length + ' abonné(s)');
+      }
+      if (adminDowngradeSubscribers.length === 0) {
+        sel.innerHTML = '<option value="">Aucun abonné stockage payant actif pour le moment</option>';
+        return;
+      }
+      if (filtered.length === 0) {
+        sel.innerHTML = '<option value="">Aucun utilisateur correspondant à « ' + escapeHtml(q) + ' »</option>';
+        onAdminDowngradeUserChange();
+        return;
+      }
+      sel.innerHTML = '<option value="">-- Choisir un utilisateur abonné (' + filtered.length + ') --</option>' +
+        filtered.map(function(u) {
+          return '<option value="' + escapeHtml(u.userId) + '">' +
+            escapeHtml((u.userName || u.userEmail || u.userId) + (u.userEmail ? ' (' + u.userEmail + ')' : '') + ' — ' + fmtMbShortAdmin(u.paidMb) + ' (' + Math.round(u.monthlyPriceFcfa).toLocaleString('fr-FR') + ' FCFA/mois)') +
+          '</option>';
+        }).join('');
+      if (q && filtered.length === 1) {
+        sel.value = filtered[0].userId;
+        onAdminDowngradeUserChange();
+      } else if (prevVal && filtered.some(function(u) { return u.userId === prevVal; })) {
+        sel.value = prevVal;
+        onAdminDowngradeUserChange();
+      }
+    }
+    window.filterAdminDowngradeSubscribers = filterAdminDowngradeSubscribers;
+
+    async function loadAdminStorageDowngrades() {
       const tbody = document.getElementById('dg-history-tbody');
       try {
-        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades?_t=' + Date.now());
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades?_t=' + Date.now(), { cache: 'no-store' });
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
         adminDowngradeConfig = data.config || adminDowngradeConfig;
@@ -20872,23 +21246,7 @@ function renderDashboardHtml(data) {
         const badgeEl = document.getElementById('asub-tab-downgrades-count');
         if (badgeEl) badgeEl.textContent = String(pendingCount);
 
-        if (sel) {
-          const prevVal = sel.value;
-          if (adminDowngradeSubscribers.length === 0) {
-            sel.innerHTML = '<option value="">Aucun abonné stockage payant actif pour le moment</option>';
-          } else {
-            sel.innerHTML = '<option value="">-- Choisir un utilisateur abonné (' + adminDowngradeSubscribers.length + ') --</option>' +
-              adminDowngradeSubscribers.map(function(u) {
-                return '<option value="' + escapeHtml(u.userId) + '">' +
-                  escapeHtml((u.userName || u.userEmail || u.userId) + ' — ' + fmtMbShortAdmin(u.paidMb) + ' (' + Math.round(u.monthlyPriceFcfa).toLocaleString('fr-FR') + ' FCFA/mois)') +
-                '</option>';
-              }).join('');
-            if (prevVal && adminDowngradeSubscribers.some(function(u) { return u.userId === prevVal; })) {
-              sel.value = prevVal;
-              onAdminDowngradeUserChange();
-            }
-          }
-        }
+        filterAdminDowngradeSubscribers();
         renderAdminDowngradeHistoryTable();
       } catch (err) {
         if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
@@ -21083,7 +21441,11 @@ function renderDashboardHtml(data) {
         confirmText: '🗑️ Supprimer',
         onConfirm: async function() {
           try {
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades/' + encodeURIComponent(reqId), { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades/' + encodeURIComponent(reqId) + '/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}'
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
             showToast('🗑️ Demande de réduction supprimée.');
@@ -21096,16 +21458,80 @@ function renderDashboardHtml(data) {
     }
     window.deleteAdminStorageDowngrade = deleteAdminStorageDowngrade;
 
+    function clearAdminStorageDowngrades() {
+      openAdminConfirmModal({
+        title: '🗑️ Vider l historique des réductions',
+        message: 'Supprimer définitivement toutes les entrées de l historique des réductions de stockage dans D1 ?',
+        confirmText: '🗑️ Tout vider',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ all: true })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' réduction(s) supprimée(s).');
+            await loadAdminStorageDowngrades();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.clearAdminStorageDowngrades = clearAdminStorageDowngrades;
+
     // --- ADMIN ANNULATIONS & REMBOURSEMENTS NETS AUTOMATIQUES ---
     let adminCancelRefundSubs = [];
     let adminCancelRefundRequests = [];
     let currentCancelRefundPreview = null;
 
-    async function loadAdminCancellationRefunds() {
+    function filterAdminCancelRefundSubs() {
       const sel = document.getElementById('cr-sub-select');
+      const countEl = document.getElementById('cr-sub-search-count');
+      if (!sel) return;
+      const prevVal = sel.value;
+      const q = String(document.getElementById('cr-sub-search')?.value || '').trim().toLowerCase();
+      const filtered = adminCancelRefundSubs.filter(function(s) {
+        if (!q) return true;
+        const hay = [s.userName, s.userEmail, s.userPhone, s.planName, s.productType, s.userId].join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+      if (countEl) {
+        countEl.textContent = q
+          ? (filtered.length + ' / ' + adminCancelRefundSubs.length + ' trouvé(s)')
+          : (adminCancelRefundSubs.length + ' abonnement(s)');
+      }
+      if (adminCancelRefundSubs.length === 0) {
+        sel.innerHTML = '<option value="">Aucun abonnement actif éligible</option>';
+        return;
+      }
+      if (filtered.length === 0) {
+        sel.innerHTML = '<option value="">Aucun abonnement correspondant à « ' + escapeHtml(q) + ' »</option>';
+        onAdminCancelRefundSubChange();
+        return;
+      }
+      sel.innerHTML = '<option value="">-- Choisir un abonnement actif (' + filtered.length + ') --</option>' +
+        filtered.map(function(s) {
+          const icon = s.productType === 'storage' ? '💾' : (s.productType === 'ai' ? '🤖' : '📱');
+          return '<option value="' + escapeHtml(s.id) + '">' +
+            escapeHtml(icon + ' ' + (s.userName || s.userEmail || s.userId) + (s.userEmail ? ' (' + s.userEmail + ')' : '') + ' — ' + (s.planName || s.productType) + ' (' + Math.round(s.priceAmount || 0).toLocaleString('fr-FR') + ' ' + (s.currency || 'XOF') + ')') +
+          '</option>';
+        }).join('');
+      if (q && filtered.length === 1) {
+        sel.value = filtered[0].id;
+        onAdminCancelRefundSubChange();
+      } else if (prevVal && filtered.some(function(s) { return s.id === prevVal; })) {
+        sel.value = prevVal;
+      }
+    }
+    window.filterAdminCancelRefundSubs = filterAdminCancelRefundSubs;
+
+    async function loadAdminCancellationRefunds() {
       const tbody = document.getElementById('cr-history-tbody');
       try {
-        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds?_t=' + Date.now());
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds?_t=' + Date.now(), { cache: 'no-store' });
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
         adminCancelRefundSubs = Array.isArray(data.eligibleSubscriptions) ? data.eligibleSubscriptions : [];
@@ -21117,23 +21543,7 @@ function renderDashboardHtml(data) {
         const badgeEl = document.getElementById('asub-tab-refunds-count');
         if (badgeEl) badgeEl.textContent = String(pendingCount);
 
-        if (sel) {
-          const prevVal = sel.value;
-          if (adminCancelRefundSubs.length === 0) {
-            sel.innerHTML = '<option value="">Aucun abonnement actif éligible</option>';
-          } else {
-            sel.innerHTML = '<option value="">-- Choisir un abonnement actif (' + adminCancelRefundSubs.length + ') --</option>' +
-              adminCancelRefundSubs.map(function(s) {
-                const icon = s.productType === 'storage' ? '💾' : (s.productType === 'ai' ? '🤖' : '📱');
-                return '<option value="' + escapeHtml(s.id) + '">' +
-                  escapeHtml(icon + ' ' + (s.userName || s.userEmail || s.userId) + ' — ' + (s.planName || s.productType) + ' (' + Math.round(s.priceAmount || 0).toLocaleString('fr-FR') + ' ' + (s.currency || 'XOF') + ')') +
-                '</option>';
-              }).join('');
-            if (prevVal && adminCancelRefundSubs.some(function(s) { return s.id === prevVal; })) {
-              sel.value = prevVal;
-            }
-          }
-        }
+        filterAdminCancelRefundSubs();
         renderAdminCancelRefundHistory();
       } catch (err) {
         if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
@@ -21376,7 +21786,11 @@ function renderDashboardHtml(data) {
         confirmText: '🗑️ Supprimer',
         onConfirm: async function() {
           try {
-            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/' + encodeURIComponent(reqId), { method: 'DELETE' });
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/' + encodeURIComponent(reqId) + '/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}'
+            });
             const data = await resp.json();
             if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
             showToast('🗑️ Demande supprimée.');
@@ -21388,6 +21802,100 @@ function renderDashboardHtml(data) {
       });
     }
     window.deleteAdminCancelRefund = deleteAdminCancelRefund;
+
+    function clearAdminCancelRefunds() {
+      openAdminConfirmModal({
+        title: '🗑️ Vider le suivi des annulations & remboursements',
+        message: 'Supprimer définitivement toutes les lignes du suivi des annulations et remboursements dans D1 ?',
+        confirmText: '🗑️ Vider tout le suivi',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ all: true })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' entrée(s) supprimée(s).');
+            await loadAdminCancellationRefunds();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.clearAdminCancelRefunds = clearAdminCancelRefunds;
+
+    // =========================================================================
+    // PWA INSTALLABLE (PC & TÉLÉPHONE) — LOGO STUDYCLOUD + « TABLEAU DE BORD »
+    // =========================================================================
+    let deferredDashboardPwaPrompt = null;
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').catch(function() {});
+      });
+    }
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredDashboardPwaPrompt = e;
+      ['btn-install-dashboard-pwa', 'btn-install-dashboard-pwa-sidebar'].forEach(function(bid) {
+        const b = document.getElementById(bid);
+        if (b) {
+          b.classList.add('ring-2', 'ring-orange-400/70');
+        }
+      });
+    });
+    window.addEventListener('appinstalled', function() {
+      deferredDashboardPwaPrompt = null;
+      showToast('✅ StudyCloud Tableau de bord a été installé sur votre appareil !');
+    });
+
+    async function triggerDashboardPwaInstall() {
+      const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+      if (isStandalone) {
+        showToast('✅ StudyCloud Tableau de bord est déjà installé sur cet appareil.');
+        return;
+      }
+      if (deferredDashboardPwaPrompt) {
+        try {
+          deferredDashboardPwaPrompt.prompt();
+          const choice = await deferredDashboardPwaPrompt.userChoice;
+          deferredDashboardPwaPrompt = null;
+          if (choice && choice.outcome === 'accepted') {
+            showToast('✅ Installation de « StudyCloud · Tableau de bord » en cours...');
+          }
+          return;
+        } catch (err) {
+          console.warn('[PWA Install]', err);
+        }
+      }
+      const ua = (navigator.userAgent || '').toLowerCase();
+      const isIos = /iphone|ipad|ipod/.test(ua);
+      openAdminConfirmModal({
+        title: '📲 Installer StudyCloud — Tableau de bord',
+        message: isIos
+          ? 'Sur iPhone / iPad (Safari) : appuyez sur le bouton Partager (⬆️) en bas de l écran, puis sélectionnez « Sur l écran d accueil » pour installer l icône StudyCloud Tableau de bord.'
+          : 'Pour installer l application « Tableau de bord » avec le logo StudyCloud : ouvrez le menu du navigateur (⋮ en haut à droite ou icône d installation dans la barre d adresse) et cliquez sur « Installer l application » ou « Ajouter à l écran d accueil ».',
+        confirmText: 'Compris',
+        onConfirm: function() {}
+      });
+    }
+    window.triggerDashboardPwaInstall = triggerDashboardPwaInstall;
+
+    // =========================================================================
+    // GARDE ANTI-AUTOFILL : EMPÊCHE TOUTE SAISIE AUTOMATIQUE DANS LES RECHERCHES
+    // =========================================================================
+    function scrubAutofilledSearchInputs() {
+      document.querySelectorAll('input[data-no-autofill="1"]').forEach(function(el) {
+        if (document.activeElement !== el && el.value) {
+          el.value = '';
+        }
+      });
+    }
+    scrubAutofilledSearchInputs();
+    setTimeout(scrubAutofilledSearchInputs, 150);
+    setTimeout(scrubAutofilledSearchInputs, 650);
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -22020,8 +22528,37 @@ async function handleAiBillingRoutes(request, path, url, origin, db, env = {}) {
 
   // 8. GET /api/ai/admin/logs
   if (request.method === 'GET' && path === '/api/ai/admin/logs') {
-    const logs = await safeQuery(db, "SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 50") || { results: [] };
-    return new Response(JSON.stringify({ success: true, logs: logs.results || [] }), {
+    const logs = await safeQuery(db, "SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 100") || { results: [] };
+    const totalRow = await safeFirst(db, "SELECT COUNT(*) AS cnt FROM ai_usage_logs", [], { cnt: 0 });
+    return new Response(JSON.stringify({ success: true, logs: logs.results || [], totalCount: Number(totalRow?.cnt || 0) }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 8b. DELETE /api/ai/admin/logs OU POST /api/ai/admin/logs/delete — Libérer la base D1 (unitaire ou total)
+  if (
+    (request.method === 'DELETE' && path === '/api/ai/admin/logs') ||
+    (request.method === 'POST' && path === '/api/ai/admin/logs/delete')
+  ) {
+    const body = await request.json().catch(() => ({}));
+    const id = String(body.id || url.searchParams.get('id') || '').trim();
+    const deleteAll = body.all === true || url.searchParams.get('all') === '1';
+    const olderThanDays = Number(body.olderThanDays || 0);
+    let delRes = null;
+    if (id) {
+      delRes = await safeRun(db, "DELETE FROM ai_usage_logs WHERE id = ?", [id]);
+    } else if (olderThanDays > 0) {
+      delRes = await safeRun(db, "DELETE FROM ai_usage_logs WHERE created_at < datetime('now', ?)", ['-' + Math.floor(olderThanDays) + ' days']);
+    } else if (deleteAll) {
+      delRes = await safeRun(db, "DELETE FROM ai_usage_logs");
+    } else {
+      return new Response(JSON.stringify({ success: false, error: 'Précisez id, olderThanDays ou all=true' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    return new Response(JSON.stringify({ success: true, deletedCount: Number(delRes?.meta?.changes || 0) }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
     });
@@ -22814,6 +23351,87 @@ export default {
       });
     }
 
+    // ------------------------------------------------------------------------
+    // PWA INSTALLABLE DU TABLEAU DE BORD (PC & TÉLÉPHONE) — LOGO STUDYCLOUD
+    // ------------------------------------------------------------------------
+    if (request.method === 'GET' && (path === '/manifest.webmanifest' || path === '/manifest.json')) {
+      const manifest = {
+        name: 'StudyCloud — Tableau de bord',
+        short_name: 'Tableau de bord',
+        description: "Tableau de bord d'administration StudyCloud (Stockage, Paiements, Abonnements & IA)",
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'any',
+        background_color: '#070b14',
+        theme_color: '#0c1220',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+        ]
+      };
+      return new Response(JSON.stringify(manifest, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/manifest+json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          ...corsHeaders(origin)
+        }
+      });
+    }
+
+    if (request.method === 'GET' && path === '/sw.js') {
+      const swCode = `const CACHE_NAME = 'studycloud-admin-pwa-v1';
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  const u = new URL(event.request.url);
+  if (u.pathname.startsWith('/api/')) return;
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
+  );
+});`;
+      return new Response(swCode, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Service-Worker-Allowed': '/'
+        }
+      });
+    }
+
+    if (request.method === 'GET' && (path === '/icon-192.png' || path === '/icon-512.png' || path === '/apple-touch-icon.png')) {
+      const upstreamIcon = path === '/icon-512.png'
+        ? 'https://studycloud.dkd-technologies.com/icon-512x512.png'
+        : 'https://studycloud.dkd-technologies.com/icon-192x192.png';
+      try {
+        const iconRes = await fetch(upstreamIcon);
+        if (iconRes.ok) {
+          const buf = await iconRes.arrayBuffer();
+          return new Response(buf, {
+            status: 200,
+            headers: {
+              'Content-Type': iconRes.headers.get('Content-Type') || 'image/png',
+              'Cache-Control': 'public, max-age=86400'
+            }
+          });
+        }
+      } catch (_) {}
+      const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f97316"/><stop offset="100%" stop-color="#ea580c"/></linearGradient></defs><rect width="192" height="192" rx="44" fill="url(#g)"/><text x="96" y="114" text-anchor="middle" font-family="sans-serif" font-size="76" font-weight="900" fill="#fff">SC</text></svg>`;
+      return new Response(fallbackSvg, {
+        status: 200,
+        headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=3600' }
+      });
+    }
+
     const { db, bucket } = getStorageBindings(env);
 
     // Si c'est un appel API et que D1 n'est pas lié, renvoyer une réponse explicite
@@ -22862,10 +23480,18 @@ export default {
         if (contentType) proxyHeaders.set('Content-Type', contentType);
         proxyHeaders.set('X-Admin-Key', adminSecret);
 
+        let proxyBody = undefined;
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          const rawBuf = await request.arrayBuffer().catch(() => null);
+          if (rawBuf && rawBuf.byteLength > 0) {
+            proxyBody = rawBuf;
+          }
+        }
+
         const upstreamResp = await fetch(targetUrl, {
           method: request.method,
           headers: proxyHeaders,
-          body: (request.method === 'GET' || request.method === 'HEAD') ? undefined : await request.arrayBuffer(),
+          body: proxyBody,
         });
         const respHeaders = new Headers();
         respHeaders.set('Content-Type', upstreamResp.headers.get('Content-Type') || 'application/json');
@@ -23905,37 +24531,42 @@ export default {
             await deleteR2KeyEverywhere(k);
           }
 
-          const userPrefixes = [
-            `user-files/${targetId}/`,
-            `users/${targetId}/`,
-            `${targetId}/`,
-            `study-files/${targetId}/`,
-            `ai-studies/${targetId}/`,
-            `published/files/${targetId}/`,
-            `shared-links/files/${targetId}/`,
-            `products/images/${targetId}/`,
-            `avatars/${targetId}`,
-            `storage-receipts/${targetId}/`,
-            `secure-files/${targetId}/`,
-            `trash/${targetId}/`,
-            `classeur/${targetId}/`,
-            `audio/${targetId}/`,
-            `images/${targetId}/`,
-            `videos/${targetId}/`,
-            `documents/${targetId}/`,
-            `downloads/${targetId}/`
+          const bucketPrefixTargets = [
+            { b: env?.BUCKET_MES_FICHIERS, p: `user-files/${targetId}/` },
+            { b: env?.BUCKET_CLASSEUR, p: `classeur/${targetId}/` },
+            { b: env?.BUCKET_AUDIO, p: `audio/${targetId}/` },
+            { b: env?.BUCKET_IMAGES, p: `images/${targetId}/` },
+            { b: env?.BUCKET_VIDEOS, p: `videos/${targetId}/` },
+            { b: env?.BUCKET_DOCUMENTS, p: `documents/${targetId}/` },
+            { b: env?.BUCKET_DOWNLOADS, p: `downloads/${targetId}/` },
+            { b: env?.BUCKET_SECURE, p: `secure-files/${targetId}/` },
           ];
-
-          for (const b of allR2Buckets) {
-            if (typeof b.list !== 'function') continue;
-            for (const prefix of userPrefixes) {
+          // Sur le bucket principal, balayer les préfixes principaux (évite >50 sous-requêtes Cloudflare)
+          const mainBucket = bucket || env?.BUCKET || env?.MON_R2_STUDYCLOUD || null;
+          if (mainBucket && typeof mainBucket.list === 'function') {
+            for (const prefix of [
+              `user-files/${targetId}/`,
+              `users/${targetId}/`,
+              `${targetId}/`,
+              `storage-receipts/${targetId}/`,
+              `avatars/${targetId}`,
+            ]) {
               try {
-                const listed = await b.list({ prefix, limit: 500 });
+                const listed = await mainBucket.list({ prefix, limit: 200 });
                 for (const obj of (listed?.objects || [])) {
-                  if (obj?.key) await b.delete(obj.key).catch(() => {});
+                  if (obj?.key) await mainBucket.delete(obj.key).catch(() => {});
                 }
               } catch (e) {}
             }
+          }
+          for (const item of bucketPrefixTargets) {
+            if (!item.b || typeof item.b.list !== 'function') continue;
+            try {
+              const listed = await item.b.list({ prefix: item.p, limit: 200 });
+              for (const obj of (listed?.objects || [])) {
+                if (obj?.key) await item.b.delete(obj.key).catch(() => {});
+              }
+            } catch (e) {}
           }
         }
 
@@ -24158,89 +24789,129 @@ export default {
         });
       }
 
-      const rawUsers = usersQuery && usersQuery.results ? usersQuery.results : [];
+      // Garde de performance critique : ne lancer le scan global R2/D1 QUE pour l'affichage HTML (/) et /api/overview|/api/users.
+      // Toutes les autres routes API (paiements, config, suppressions, alertes, plans, apps) s'exécutent ainsi en <30ms sans jamais saturer Cloudflare !
+      const needsHeavyOverview = (
+        path === '/' ||
+        path === '' ||
+        path === '/api/overview' ||
+        path === '/api/users' ||
+        path === '/api/storage/users'
+      );
 
-      // Préchargement ultra-rapide de user_storage_usage pour éviter tout timeout D1
-      const usageMap = new Map();
-      const usagesRes = await safeQuery(db, `SELECT * FROM user_storage_usage`, []);
-      if (usagesRes && usagesRes.results) {
-        for (const row of usagesRes.results) {
-          usageMap.set(row.user_id, row);
-        }
-      }
-
-      // Inspection pour chaque utilisateur
-      // Préchargement de la configuration de facturation IA et des soldes utilisateurs D1
-      const aiBillingConfigRow = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+      let rawUsers = [];
+      let detailedUsers = [];
+      let aiBillingConfigRow = {
         tokens_per_credit: 1000,
         welcome_credits: 50.0,
         daily_free_credits: 0.0,
         is_daily_renewal_active: 0
       };
-
-      const aiCreditsMap = new Map();
-      const aiCreditsRes = await safeQuery(db, "SELECT * FROM user_ai_credits", []);
-      if (aiCreditsRes && aiCreditsRes.results) {
-        for (const row of aiCreditsRes.results) {
-          aiCreditsMap.set(row.user_id, row);
-        }
-      }
-
-      const detailedUsers = [];
-      for (const u of rawUsers) {
-        const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow, usageMap.get(u.id));
-        detail.aiCredits = aiCreditsMap.get(u.id) || {
-          credits_balance: (aiBillingConfigRow.welcome_credits !== undefined ? aiBillingConfigRow.welcome_credits : 50.0),
-          total_tokens_consumed: 0,
-          total_credits_purchased: 0,
-          total_credits_consumed: 0,
-          last_daily_grant_date: '',
-          plan_tier: 'gratuit'
-        };
-        detailedUsers.push(detail);
-      }
-
-      // Inspection GLOBALE et DYNAMIQUE de TOUTES les tables D1 (actuelles et futures)
-      const d1GlobalData = await inspectAllD1TablesGlobal(db);
-      const tablesMeta = d1GlobalData.tablesMeta;
-      const d1TablesGlobal = d1GlobalData.d1TablesGlobal;
-      const globalD1Bytes = d1GlobalData.totalD1Bytes;
-      const globalD1Rows = d1GlobalData.totalD1Rows;
-
-      // Inspection GLOBALE et RÉELLE de TOUT le stockage R2 (fichiers de toute l'application)
-      const r2GlobalData = await inspectRealR2Global(bucket, db, detailedUsers);
-      const globalR2Bytes = r2GlobalData.totalR2Bytes;
-      const globalR2Files = r2GlobalData.totalR2Files;
-      const r2FoldersGlobal = r2GlobalData.r2FoldersGlobal;
-      const r2Meta = r2GlobalData.r2Meta;
-
-      // Synthèse globale RÉELLE de l'application entière (incluant facturation et économie)
-      let sumOriginalBytes = 0;
-      let sumSavedBytes = 0;
-      for (const du of detailedUsers) {
-        sumOriginalBytes += du.storage?.original?.totalBytes || du.storage?.totalBytes || 0;
-        sumSavedBytes += du.storage?.compression?.savedBytes || 0;
-      }
-      if (sumOriginalBytes === 0) sumOriginalBytes = globalR2Bytes + globalD1Bytes;
-
-      const globalSummary = {
-        totalUsers: rawUsers.length,
-        totalStorageBytes: globalR2Bytes + globalD1Bytes,
-        totalStorageFormatted: formatBytes(globalR2Bytes + globalD1Bytes),
-        totalOriginalBytes: sumOriginalBytes,
-        totalOriginalFormatted: formatBytes(sumOriginalBytes),
-        totalSavedBytes: sumSavedBytes,
-        totalSavedFormatted: formatBytes(sumSavedBytes),
-        totalR2Bytes: globalR2Bytes,
-        totalR2Formatted: formatBytes(globalR2Bytes),
-        totalR2Files: globalR2Files,
-        totalD1Bytes: globalD1Bytes,
-        totalD1Formatted: formatBytes(globalD1Bytes),
-        totalD1Rows: globalD1Rows,
+      let tablesMeta = TABLES_METADATA;
+      let d1TablesGlobal = {};
+      let globalD1Bytes = 0;
+      let globalD1Rows = 0;
+      let r2FoldersGlobal = {};
+      let r2Meta = R2_FOLDERS_METADATA;
+      let globalR2Bytes = 0;
+      let globalR2Files = 0;
+      let globalSummary = {
+        totalUsers: 0,
+        totalStorageBytes: 0,
+        totalStorageFormatted: '0 Octets',
+        totalOriginalBytes: 0,
+        totalOriginalFormatted: '0 Octets',
+        totalSavedBytes: 0,
+        totalSavedFormatted: '0 Octets',
+        totalR2Bytes: 0,
+        totalR2Formatted: '0 Octets',
+        totalR2Files: 0,
+        totalD1Bytes: 0,
+        totalD1Formatted: '0 Octets',
+        totalD1Rows: 0,
         cloudflareR2FreeQuota: '10 Go (10737418240 Octets)',
         cloudflareD1FreeQuota: '5 Go (5368709120 Octets)',
         estimatedCostUsd: '0.00 $ (Inclus dans les quotas gratuits)'
       };
+
+      if (needsHeavyOverview) {
+        rawUsers = usersQuery && usersQuery.results ? usersQuery.results : [];
+
+        // Préchargement ultra-rapide de user_storage_usage pour éviter tout timeout D1
+        const usageMap = new Map();
+        const usagesRes = await safeQuery(db, `SELECT * FROM user_storage_usage`, []);
+        if (usagesRes && usagesRes.results) {
+          for (const row of usagesRes.results) {
+            usageMap.set(row.user_id, row);
+          }
+        }
+
+        // Préchargement de la configuration de facturation IA et des soldes utilisateurs D1
+        aiBillingConfigRow = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || aiBillingConfigRow;
+
+        const aiCreditsMap = new Map();
+        const aiCreditsRes = await safeQuery(db, "SELECT * FROM user_ai_credits", []);
+        if (aiCreditsRes && aiCreditsRes.results) {
+          for (const row of aiCreditsRes.results) {
+            aiCreditsMap.set(row.user_id, row);
+          }
+        }
+
+        for (const u of rawUsers) {
+          const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow, usageMap.get(u.id));
+          detail.aiCredits = aiCreditsMap.get(u.id) || {
+            credits_balance: (aiBillingConfigRow.welcome_credits !== undefined ? aiBillingConfigRow.welcome_credits : 50.0),
+            total_tokens_consumed: 0,
+            total_credits_purchased: 0,
+            total_credits_consumed: 0,
+            last_daily_grant_date: '',
+            plan_tier: 'gratuit'
+          };
+          detailedUsers.push(detail);
+        }
+
+        // Inspection GLOBALE et DYNAMIQUE de TOUTES les tables D1 (actuelles et futures)
+        const d1GlobalData = await inspectAllD1TablesGlobal(db);
+        tablesMeta = d1GlobalData.tablesMeta;
+        d1TablesGlobal = d1GlobalData.d1TablesGlobal;
+        globalD1Bytes = d1GlobalData.totalD1Bytes;
+        globalD1Rows = d1GlobalData.totalD1Rows;
+
+        // Inspection GLOBALE et RÉELLE de TOUT le stockage R2 (fichiers de toute l'application)
+        const r2GlobalData = await inspectRealR2Global(bucket, db, detailedUsers);
+        globalR2Bytes = r2GlobalData.totalR2Bytes;
+        globalR2Files = r2GlobalData.totalR2Files;
+        r2FoldersGlobal = r2GlobalData.r2FoldersGlobal;
+        r2Meta = r2GlobalData.r2Meta;
+
+        // Synthèse globale RÉELLE de l'application entière (incluant facturation et économie)
+        let sumOriginalBytes = 0;
+        let sumSavedBytes = 0;
+        for (const du of detailedUsers) {
+          sumOriginalBytes += du.storage?.original?.totalBytes || du.storage?.totalBytes || 0;
+          sumSavedBytes += du.storage?.compression?.savedBytes || 0;
+        }
+        if (sumOriginalBytes === 0) sumOriginalBytes = globalR2Bytes + globalD1Bytes;
+
+        globalSummary = {
+          totalUsers: rawUsers.length,
+          totalStorageBytes: globalR2Bytes + globalD1Bytes,
+          totalStorageFormatted: formatBytes(globalR2Bytes + globalD1Bytes),
+          totalOriginalBytes: sumOriginalBytes,
+          totalOriginalFormatted: formatBytes(sumOriginalBytes),
+          totalSavedBytes: sumSavedBytes,
+          totalSavedFormatted: formatBytes(sumSavedBytes),
+          totalR2Bytes: globalR2Bytes,
+          totalR2Formatted: formatBytes(globalR2Bytes),
+          totalR2Files: globalR2Files,
+          totalD1Bytes: globalD1Bytes,
+          totalD1Formatted: formatBytes(globalD1Bytes),
+          totalD1Rows: globalD1Rows,
+          cloudflareR2FreeQuota: '10 Go (10737418240 Octets)',
+          cloudflareD1FreeQuota: '5 Go (5368709120 Octets)',
+          estimatedCostUsd: '0.00 $ (Inclus dans les quotas gratuits)'
+        };
+      }
 
       // ----------------------------------------------------------------------
       // ROUTE API : /api/overview
@@ -25112,36 +25783,58 @@ export default {
           return Math.round(amt);
         };
 
-        let monthRevenueXof = 0;
-        let monthPaidCount = 0;
-        let totalRevenueXof = 0;
-        let totalPaidCount = 0;
+        // Charger les compteurs KPI archivés (préservent Revenus du mois & Revenus cumulés quand on vide les transactions en bas !)
+        const kpiArch = (await safeFirst(db, "SELECT * FROM billing_kpi_archive_counters WHERE id = 'default' LIMIT 1")) || {};
+        const archMonthKey = String(kpiArch.archived_month_key || '');
+        const monthResetAfter = String(kpiArch.month_reset_after || '');
+        const totalResetAfter = String(kpiArch.total_reset_after || '');
+        const activeResetAfter = String(kpiArch.active_reset_after || '');
+
+        let monthRevenueXof = archMonthKey === nowMonthPrefix ? Math.max(0, Number(kpiArch.archived_month_revenue_xof || 0)) : 0;
+        let monthPaidCount = archMonthKey === nowMonthPrefix ? Math.max(0, Number(kpiArch.archived_month_paid_count || 0)) : 0;
+        let totalRevenueXof = Math.max(0, Number(kpiArch.archived_total_revenue_xof || 0));
+        let totalPaidCount = Math.max(0, Number(kpiArch.archived_total_paid_count || 0));
         let pendingOrFailedCount = 0;
         const netMap = {};
+        try {
+          const parsedNet = JSON.parse(String(kpiArch.archived_network_json || '{}')) || {};
+          for (const nk of Object.keys(parsedNet)) {
+            const v = parsedNet[nk];
+            if (v && (Number(v.count || 0) > 0 || Number(v.total_xof || 0) > 0)) {
+              netMap[nk] = { network: nk, count: Number(v.count || 0), total_xof: Number(v.total_xof || 0) };
+            }
+          }
+        } catch (_) {}
 
         for (const tx of mappedTx) {
           const st = String(tx.status || '').toLowerCase();
           const isPaid = st === 'paid' || st === 'completed' || st === 'approved';
           if (isPaid) {
             const xof = toXof(tx.amount_major, tx.currency);
-            totalRevenueXof += xof;
-            totalPaidCount += 1;
             const dateStr = String(tx.paid_at || tx.created_at || '');
-            if (dateStr.startsWith(nowMonthPrefix)) {
+            if (!totalResetAfter || dateStr >= totalResetAfter) {
+              totalRevenueXof += xof;
+              totalPaidCount += 1;
+              const netKey = tx.network_label || 'Paystack';
+              if (!netMap[netKey]) netMap[netKey] = { network: netKey, count: 0, total_xof: 0 };
+              netMap[netKey].count += 1;
+              netMap[netKey].total_xof += xof;
+            }
+            if (dateStr.startsWith(nowMonthPrefix) && (!monthResetAfter || dateStr >= monthResetAfter)) {
               monthRevenueXof += xof;
               monthPaidCount += 1;
             }
-            const netKey = tx.network_label || 'Paystack';
-            if (!netMap[netKey]) netMap[netKey] = { network: netKey, count: 0, total_xof: 0 };
-            netMap[netKey].count += 1;
-            netMap[netKey].total_xof += xof;
           } else {
             pendingOrFailedCount += 1;
           }
         }
 
-        const activeAppEntRow = await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_app_entitlements WHERE status IN ('active', 'trial')`);
-        const activeSubRow = await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE status = 'active'`);
+        const activeAppEntRow = activeResetAfter
+          ? await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_app_entitlements WHERE status IN ('active', 'trial') AND COALESCE(updated_at, created_at) >= ?`, [activeResetAfter])
+          : await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_app_entitlements WHERE status IN ('active', 'trial')`);
+        const activeSubRow = activeResetAfter
+          ? await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE status = 'active' AND COALESCE(updated_at, created_at) >= ?`, [activeResetAfter])
+          : await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE status = 'active'`);
         const activeAppAccessCount = Number(activeAppEntRow?.cnt || 0);
         const activeStorageSubsCount = Number(activeSubRow?.cnt || 0);
 
@@ -25162,6 +25855,83 @@ export default {
           }
         }), {
           status: 200,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(origin) }
+        });
+      }
+
+      // ROUTE POST : /api/admin/payments/kpi-reset — Réinitialiser individuellement chaque compteur KPI en haut
+      if (request.method === 'POST' && path === '/api/admin/payments/kpi-reset') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const scope = String(body.scope || '').trim().toLowerCase();
+        const nowIso = new Date().toISOString();
+        const nowMonthPrefix = nowIso.slice(0, 7);
+
+        if (scope === 'month_revenue') {
+          await safeRun(db, `
+            UPDATE billing_kpi_archive_counters
+            SET archived_month_key = ?,
+                archived_month_revenue_xof = 0,
+                archived_month_paid_count = 0,
+                month_reset_after = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = 'default'
+          `, [nowMonthPrefix, nowIso]);
+          return new Response(JSON.stringify({ success: true, scope, message: 'Compteur « Revenus du mois » remis à zéro.' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        if (scope === 'total_revenue') {
+          await safeRun(db, `
+            UPDATE billing_kpi_archive_counters
+            SET archived_total_revenue_xof = 0,
+                archived_total_paid_count = 0,
+                archived_network_json = '{}',
+                total_reset_after = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = 'default'
+          `, [nowIso]);
+          return new Response(JSON.stringify({ success: true, scope, message: 'Compteur « Revenus cumulés » et répartition réseaux remis à zéro.' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        if (scope === 'active_entitlements') {
+          await safeRun(db, `DELETE FROM user_app_entitlements WHERE status NOT IN ('active', 'trial')`);
+          await safeRun(db, `DELETE FROM user_subscriptions WHERE status != 'active'`);
+          await safeRun(db, `
+            UPDATE billing_kpi_archive_counters
+            SET active_reset_after = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = 'default'
+          `, [nowIso]);
+          return new Response(JSON.stringify({ success: true, scope, message: 'Compteur « Accès Apps & Abonnés actifs » remis à zéro (les comptes actifs ne sont pas coupés).' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        if (scope === 'pending_failed') {
+          const r1 = await safeRun(db, `DELETE FROM payment_transactions WHERE LOWER(status) IN ('pending', 'failed', 'abandoned', 'cancelled', 'initialized', 'rejected')`);
+          const r2 = await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE LOWER(status) IN ('pending', 'failed', 'rejected', 'cancelled')`);
+          const deletedCount = Number(r1?.meta?.changes || 0) + Number(r2?.meta?.changes || 0);
+          return new Response(JSON.stringify({ success: true, scope, deletedCount, message: deletedCount + ' transaction(s) en attente / échouée(s) supprimée(s).' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        return new Response(JSON.stringify({ success: false, error: 'Portée KPI invalide (month_revenue, total_revenue, active_entitlements, pending_failed).' }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
       }
@@ -26152,7 +26922,7 @@ export default {
         });
       }
 
-      if (request.method === 'DELETE' && path === '/api/storage/alert-rules/delete') {
+      if ((request.method === 'DELETE' || request.method === 'POST') && path === '/api/storage/alert-rules/delete') {
         const body = await request.json().catch(() => ({}));
         const threshold = Number(body.threshold_percent || url.searchParams.get('threshold') || 0);
         if (threshold > 0) {
@@ -26290,7 +27060,7 @@ export default {
         });
       }
 
-      if (request.method === 'DELETE' && path === '/api/storage/alert-logs') {
+      if ((request.method === 'DELETE' && path === '/api/storage/alert-logs') || (request.method === 'POST' && path === '/api/storage/alert-logs/delete')) {
         const body = await request.json().catch(() => ({}));
 
         if (body.all === true) {
@@ -26358,6 +27128,14 @@ export default {
       const dkdStoreSubcatsRes = await safeQuery(db, "SELECT * FROM dkd_store_subcategories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
       const dkdStoreSitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
 
+      const paymentGatewayConfigRow = (await safeFirst(db, "SELECT * FROM payment_gateway_config WHERE id = 'default' LIMIT 1")) || {
+        id: 'default',
+        provider: 'paystack',
+        paystack_enabled: 1,
+        manual_receipt_enabled: 0,
+        default_currency: 'XOF'
+      };
+
       const htmlContent = renderDashboardHtml({
         summary: globalSummary,
         globalConfig: globalConfigRow,
@@ -26369,6 +27147,7 @@ export default {
         upgradeRequests: rawUpgradeRequests,
         userSubscriptions: rawUserSubs,
         companyProfile: companyProfileRow,
+        paymentGatewayConfig: paymentGatewayConfigRow,
         storagePlans: (storagePlansRes && storagePlansRes.results) ? storagePlansRes.results : [],
         aiPlans: (aiPlansRes && aiPlansRes.results) ? aiPlansRes.results : [],
         alertRules: (alertRulesRes && alertRulesRes.results) ? alertRulesRes.results : [],

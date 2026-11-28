@@ -26,6 +26,7 @@ import {
   PaymentProductType,
   savePendingPaystackReturnContext,
   submitPaystackMobileOtp,
+  verifyLiveProductPrice,
   verifyPaystackPayment,
   VerifyPaystackResponse,
 } from '../services/paystackBillingApi';
@@ -190,10 +191,16 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     );
   }, [countrySearch]);
 
+  const [liveTarget, setLiveTarget] = useState<StudyCloudPaymentTarget>(target);
+  useEffect(() => {
+    setLiveTarget(target);
+  }, [target]);
+
   const [step, setStep] = useState<PaymentStep>('select');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [checkingStatus, setCheckingStatus] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [priceUpdatedBanner, setPriceUpdatedBanner] = useState<string | null>(null);
   const [showPopupFallback, setShowPopupFallback] = useState<boolean>(false);
 
   const [activeReference, setActiveReference] = useState<string>('');
@@ -306,6 +313,49 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     setStep('confirm');
   };
 
+  // Vérification ultime du prix réel en base D1 juste avant le débit (si l'admin a changé le prix pendant que l'écran était ouvert)
+  const ensureLivePriceBeforeCharge = useCallback(async (): Promise<boolean> => {
+    const check = await verifyLiveProductPrice({
+      productType: liveTarget.productType,
+      productId: liveTarget.productId,
+      displayedAmountFcfa: liveTarget.amountFcfa,
+      billingCycle: liveTarget.billingCycle,
+      targetPaidMb: liveTarget.targetPaidMb,
+    });
+    if (check.success && check.isActive === false) {
+      setErrorMsg(
+        check.unavailableReason ||
+          "Cette offre n'est plus active dans la base de données. Retournez aux abonnements."
+      );
+      return false;
+    }
+    if (
+      check.success &&
+      typeof check.liveAmountFcfa === 'number' &&
+      check.liveAmountFcfa > 0 &&
+      check.priceChanged
+    ) {
+      const liveAmount = Math.round(check.liveAmountFcfa);
+      setLiveTarget((prev) => ({
+        ...prev,
+        amountFcfa: liveAmount,
+        productName: check.liveProductName || prev.productName,
+        secondaryPriceDisplay: undefined,
+      }));
+      setPriceUpdatedBanner(
+        `Le tarif a été mis à jour en direct depuis la base de données (${liveAmount.toLocaleString('fr-FR')} FCFA). Cliquez à nouveau pour confirmer ce montant exact.`
+      );
+      try {
+        window.dispatchEvent(new CustomEvent('studycloud_pricing_updated'));
+      } catch {
+        // Ignore
+      }
+      return false;
+    }
+    setPriceUpdatedBanner(null);
+    return true;
+  }, [liveTarget]);
+
   // Étape 2 -> Exécution réelle du paiement après clic sur « Confirmer et payer »
   const handleExecuteConfirmedPayment = async () => {
     if (submitting) return;
@@ -326,14 +376,20 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     setSubmitting(true);
 
     try {
+      const priceOk = await ensureLivePriceBeforeCharge();
+      if (!priceOk) {
+        setSubmitting(false);
+        return;
+      }
+
       const res = await chargeMobileMoneyWithPaystack({
-        productType: target.productType,
-        productId: target.productId,
-        billingCycle: target.billingCycle,
+        productType: liveTarget.productType,
+        productId: liveTarget.productId,
+        billingCycle: liveTarget.billingCycle,
         provider: method as MobileMoneyProvider,
         phone: validation.paystackPhone,
         countryIso: selectedCountry.iso,
-        targetPaidMb: target.targetPaidMb,
+        targetPaidMb: liveTarget.targetPaidMb,
       });
 
       if (!res.success) {
@@ -422,14 +478,20 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     setSubmitting(true);
 
     try {
+      const priceOk = await ensureLivePriceBeforeCharge();
+      if (!priceOk) {
+        setSubmitting(false);
+        return;
+      }
+
       const initRes = await initializePaystackPayment({
-        productType: target.productType,
-        productId: target.productId,
-        billingCycle: target.billingCycle,
+        productType: liveTarget.productType,
+        productId: liveTarget.productId,
+        billingCycle: liveTarget.billingCycle,
         currency: 'XOF',
         channelOnly,
         preferAutoCard: false,
-        targetPaidMb: target.targetPaidMb,
+        targetPaidMb: liveTarget.targetPaidMb,
       });
 
       if (!initRes.success || !initRes.accessCode) {
@@ -442,10 +504,10 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
       setActiveReference(ref);
 
       savePendingPaystackReturnContext({
-        productType: target.productType,
-        productId: target.productId,
-        productName: target.productName,
-        appKey: target.appKey,
+        productType: liveTarget.productType,
+        productId: liveTarget.productId,
+        productName: liveTarget.productName,
+        appKey: liveTarget.appKey,
         createdAt: Date.now(),
       });
 
@@ -486,17 +548,17 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     }
   };
 
-  const formattedFcfa = formatCurrencyAmount(target.amountFcfa, 'XOF');
+  const formattedFcfa = formatCurrencyAmount(liveTarget.amountFcfa, 'XOF');
   const minutesStr = String(Math.floor(countdownSec / 60)).padStart(2, '0');
   const secondsStr = String(countdownSec % 60).padStart(2, '0');
 
   // Liste complète des bénéfices réels de la carte sélectionnée
   const benefitItems: string[] = [];
-  if (target.subtitle && target.subtitle.trim()) {
-    benefitItems.push(target.subtitle.trim());
+  if (liveTarget.subtitle && liveTarget.subtitle.trim()) {
+    benefitItems.push(liveTarget.subtitle.trim());
   }
-  if (Array.isArray(target.features)) {
-    for (const f of target.features) {
+  if (Array.isArray(liveTarget.features)) {
+    for (const f of liveTarget.features) {
       const clean = String(f || '').trim();
       if (clean && !benefitItems.some((existing) => existing.toLowerCase() === clean.toLowerCase())) {
         benefitItems.push(clean);
@@ -510,12 +572,12 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
   if (step === 'success') {
     return (
       <PaymentSuccessCelebration
-        productName={target.productName}
-        productType={target.productType}
+        productName={liveTarget.productName}
+        productType={liveTarget.productType}
         amount={
           verifiedResult?.transaction
             ? verifiedResult.transaction.paid_amount || verifiedResult.transaction.expected_amount
-            : target.amountFcfa
+            : liveTarget.amountFcfa
         }
         currency={verifiedResult?.transaction?.currency || 'XOF'}
         reference={verifiedResult?.transaction?.reference || activeReference}
@@ -578,12 +640,12 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
           {/* En-tête de la carte : Nom & description */}
           <div className="space-y-3 pt-2">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-stone-950 dark:text-white leading-tight">
-              {target.productName}
+              {liveTarget.productName}
             </h1>
 
-            {target.description && (
+            {liveTarget.description && (
               <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed max-w-md">
-                {target.description}
+                {liveTarget.description}
               </p>
             )}
           </div>
@@ -594,15 +656,15 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               <span className="text-4xl sm:text-5xl font-black tracking-tight tabular-nums text-stone-950 dark:text-white">
                 {formattedFcfa}
               </span>
-              {target.periodLabel && (
+              {liveTarget.periodLabel && (
                 <span className="text-base sm:text-lg font-semibold text-stone-600 dark:text-stone-400">
-                  {target.periodLabel}
+                  {liveTarget.periodLabel}
                 </span>
               )}
             </div>
-            {target.secondaryPriceDisplay && (
+            {liveTarget.secondaryPriceDisplay && (
               <div className="text-xs sm:text-sm font-semibold text-stone-600 dark:text-stone-400">
-                {target.secondaryPriceDisplay}
+                {liveTarget.secondaryPriceDisplay}
               </div>
             )}
           </div>
@@ -701,6 +763,13 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               </div>
 
               {/* Erreur éventuelle */}
+              {priceUpdatedBanner && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <RefreshCw className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <span>{priceUpdatedBanner}</span>
+                </div>
+              )}
+
               {errorMsg && (
                 <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 space-y-2.5">
                   <div className="flex items-start gap-2">
@@ -908,6 +977,13 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                 )}
               </div>
 
+              {priceUpdatedBanner && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <RefreshCw className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <span>{priceUpdatedBanner}</span>
+                </div>
+              )}
+
               {errorMsg && (
                 <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 space-y-2.5">
                   <div className="flex items-start gap-2">
@@ -1023,6 +1099,13 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                 </div>
               </div>
 
+              {priceUpdatedBanner && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <RefreshCw className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <span>{priceUpdatedBanner}</span>
+                </div>
+              )}
+
               {errorMsg && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -1099,6 +1182,13 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                     <span>Ouvrir Wave</span>
                     <ExternalLink className="w-4 h-4" />
                   </a>
+                </div>
+              )}
+
+              {priceUpdatedBanner && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <RefreshCw className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <span>{priceUpdatedBanner}</span>
                 </div>
               )}
 
