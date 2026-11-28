@@ -194,22 +194,22 @@ const getMentionBadgeStyle = (
   averageScale = DEFAULT_AVERAGE_SCALE
 ): string => {
   if (average === null || !Number.isFinite(average)) {
-    return 'bg-slate-50 text-slate-400 border-slate-200';
+    return 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
   }
   const { tone } = resolveMentionWithRules(average, rules, averageScale);
   switch (tone) {
     case 'emerald':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/45';
     case 'teal':
-      return 'bg-teal-50 text-teal-800 border-teal-200';
+      return 'bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-500/20 dark:text-teal-300 dark:border-teal-500/45';
     case 'sky':
-      return 'bg-blue-50 text-blue-800 border-blue-200';
+      return 'bg-blue-50 text-blue-800 border-blue-200 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/45';
     case 'amber':
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/45';
     case 'rose':
-      return 'bg-red-50 text-red-700 border-red-200';
+      return 'bg-red-50 text-red-700 border-red-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/45';
     default:
-      return 'bg-slate-50 text-slate-400 border-slate-200';
+      return 'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
   }
 };
 
@@ -2793,6 +2793,41 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         .dark .term-avg-sheet > section button:not(.delmas-ribbon-trigger):hover {
           background-color: #334155 !important;
         }
+        .dark .term-avg-sheet > header .bg-slate-100,
+        .dark .term-avg-sheet > header .bg-slate-200,
+        .dark .term-avg-sheet > header .bg-white,
+        .dark .term-avg-sheet > section .bg-\[\#f9fafb\],
+        .dark .term-avg-sheet > section .bg-slate-50\/60,
+        .dark .term-avg-sheet > section .bg-slate-50,
+        .dark .term-avg-sheet > section .bg-slate-100,
+        .dark .term-avg-sheet > section .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet > header .bg-emerald-50 {
+          background-color: rgba(6, 78, 59, 0.45) !important;
+          border-color: rgba(52, 211, 153, 0.45) !important;
+          color: #6ee7b7 !important;
+        }
+        .dark .term-avg-sheet > header .bg-amber-50 {
+          background-color: rgba(120, 53, 15, 0.45) !important;
+          border-color: rgba(251, 191, 36, 0.45) !important;
+          color: #fcd34d !important;
+        }
+        .dark .term-avg-sheet > header .bg-red-50 {
+          background-color: rgba(127, 29, 29, 0.5) !important;
+          border-color: rgba(248, 113, 113, 0.5) !important;
+          color: #fca5a5 !important;
+        }
+        .dark .term-avg-sheet > header .bg-cyan-50 {
+          background-color: rgba(14, 116, 144, 0.35) !important;
+          border-color: rgba(56, 189, 248, 0.45) !important;
+          color: #7dd3fc !important;
+        }
+        .dark .term-avg-sheet > section .bg-slate-300 {
+          background-color: #334155 !important;
+        }
         .dark .term-avg-sheet .term-avg-grid-canvas {
           background-color: #0b1120 !important;
         }
@@ -2825,6 +2860,46 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         }
         .dark .term-avg-sheet .term-avg-table-card tbody tr:hover {
           background-color: #1e293b !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-slate-100 {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #cbd5e1 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-slate-200 {
+          background-color: #334155 !important;
+          border-color: #64748b !important;
+          color: #f8fafc !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-amber-100 {
+          background-color: rgba(245, 158, 11, 0.24) !important;
+          border-color: rgba(251, 191, 36, 0.5) !important;
+          color: #fde68a !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-orange-100 {
+          background-color: rgba(249, 115, 22, 0.24) !important;
+          border-color: rgba(251, 146, 60, 0.5) !important;
+          color: #fed7aa !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-emerald-100 {
+          background-color: rgba(16, 185, 129, 0.22) !important;
+          border-color: rgba(52, 211, 153, 0.48) !important;
+          color: #a7f3d0 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-teal-100 {
+          background-color: rgba(20, 184, 166, 0.22) !important;
+          border-color: rgba(45, 212, 191, 0.48) !important;
+          color: #99f6e4 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-sky-100 {
+          background-color: rgba(14, 165, 233, 0.22) !important;
+          border-color: rgba(56, 189, 248, 0.48) !important;
+          color: #bae6fd !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .bg-rose-100 {
+          background-color: rgba(244, 63, 94, 0.22) !important;
+          border-color: rgba(251, 113, 133, 0.48) !important;
+          color: #fecdd3 !important;
         }
         .dark .term-avg-sheet .term-avg-table-card td[data-default-tint="true"] {
           background-color: #162033 !important;

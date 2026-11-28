@@ -1541,21 +1541,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const getStudentMention = (average: number | null): { label: string; badgeClass: string } => {
     const resolved = resolveMentionWithRules(average, effectiveMentionRules, effectiveAverageScale);
     if (average === null || resolved.label === '—') {
-      return { label: '—', badgeClass: 'text-slate-400 font-semibold' };
+      return { label: '—', badgeClass: 'text-slate-400 dark:text-slate-500 font-semibold' };
     }
     if (resolved.tone === 'emerald') {
-      return { label: resolved.label, badgeClass: 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black' };
+      return { label: resolved.label, badgeClass: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-950 dark:text-emerald-200 border-emerald-300 dark:border-emerald-500/45 font-black' };
     }
     if (resolved.tone === 'teal') {
-      return { label: resolved.label, badgeClass: 'bg-teal-100 text-teal-950 border-teal-300 font-extrabold' };
+      return { label: resolved.label, badgeClass: 'bg-teal-100 dark:bg-teal-500/20 text-teal-950 dark:text-teal-200 border-teal-300 dark:border-teal-500/45 font-extrabold' };
     }
     if (resolved.tone === 'sky') {
-      return { label: resolved.label, badgeClass: 'bg-sky-100 text-sky-950 border-sky-300 font-extrabold' };
+      return { label: resolved.label, badgeClass: 'bg-sky-100 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-300 dark:border-sky-500/45 font-extrabold' };
     }
     if (resolved.tone === 'amber') {
-      return { label: resolved.label, badgeClass: 'bg-amber-100 text-amber-950 border-amber-300 font-bold' };
+      return { label: resolved.label, badgeClass: 'bg-amber-100 dark:bg-amber-500/20 text-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-500/45 font-bold' };
     }
-    return { label: resolved.label, badgeClass: 'bg-rose-100 text-rose-950 border-rose-300 font-bold' };
+    return { label: resolved.label, badgeClass: 'bg-rose-100 dark:bg-rose-500/20 text-rose-950 dark:text-rose-200 border-rose-300 dark:border-rose-500/45 font-bold' };
   };
 
   // Calcul dynamique des moyennes (/20 pondérées par coeffEval), mentions et rangs (avec ex æquo 1e-6)
@@ -6639,10 +6639,61 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           border-color: #334155 !important;
           color: #e2e8f0 !important;
         }
-        .dark .gradebook-gray-selection > header button,
-        .dark .gradebook-gray-selection > section button,
+        .dark .gradebook-gray-selection > header button:not(.delmas-ribbon-trigger),
+        .dark .gradebook-gray-selection > section button:not(.delmas-ribbon-trigger),
         .dark .gradebook-gray-selection > section select {
+          background-color: #1e293b !important;
           border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .gradebook-gray-selection > header button:not(.delmas-ribbon-trigger):hover,
+        .dark .gradebook-gray-selection > section button:not(.delmas-ribbon-trigger):hover {
+          background-color: #334155 !important;
+        }
+        .dark .gradebook-gray-selection > header .bg-slate-100,
+        .dark .gradebook-gray-selection > header .bg-slate-200,
+        .dark .gradebook-gray-selection > header .bg-white,
+        .dark .gradebook-gray-selection > section .bg-\[\#f9fafb\],
+        .dark .gradebook-gray-selection > section .bg-slate-50,
+        .dark .gradebook-gray-selection > section .bg-slate-100,
+        .dark .gradebook-gray-selection > section .bg-slate-200,
+        .dark .gradebook-gray-selection > section .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .gradebook-gray-selection > header .bg-emerald-50 {
+          background-color: rgba(6, 78, 59, 0.45) !important;
+          border-color: rgba(52, 211, 153, 0.45) !important;
+          color: #6ee7b7 !important;
+        }
+        .dark .gradebook-gray-selection > header .bg-amber-50 {
+          background-color: rgba(120, 53, 15, 0.45) !important;
+          border-color: rgba(251, 191, 36, 0.45) !important;
+          color: #fcd34d !important;
+        }
+        .dark .gradebook-gray-selection > header .bg-red-50 {
+          background-color: rgba(127, 29, 29, 0.5) !important;
+          border-color: rgba(248, 113, 113, 0.5) !important;
+          color: #fca5a5 !important;
+        }
+        .dark .gradebook-gray-selection > header .bg-cyan-50 {
+          background-color: rgba(14, 116, 144, 0.35) !important;
+          border-color: rgba(56, 189, 248, 0.45) !important;
+          color: #7dd3fc !important;
+        }
+        .dark .gradebook-gray-selection > header svg,
+        .dark .gradebook-gray-selection > section .text-slate-700,
+        .dark .gradebook-gray-selection > section .text-slate-800 {
+          color: #e2e8f0 !important;
+        }
+        .dark .gradebook-gray-selection > section .bg-slate-300 {
+          background-color: #334155 !important;
+        }
+        .dark .gradebook-gray-selection > section #input-formula-bar {
+          background-color: #0f172a !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
         }
         .dark .gradebook-gray-selection > div.flex-1.overflow-auto {
           background-color: #0b1120 !important;
@@ -6656,6 +6707,129 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         .dark .gradebook-gray-selection .gb-excel-margin {
           background-color: #0f172a !important;
           border-color: #1e293b !important;
+        }
+        .dark .gradebook-gray-selection .gb-sheet-frame {
+          background-color: #0f172a !important;
+          border-color: #64748b !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row {
+          background-color: #1e293b !important;
+          border-color: #64748b !important;
+          color: #f8fafc !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .bg-\[\#f1f5f9\],
+        .dark .gradebook-gray-selection .gb-header-row .bg-slate-200\/70 {
+          background-color: #1e293b !important;
+          color: #f8fafc !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .bg-blue-100\/70 {
+          background-color: rgba(30, 58, 138, 0.45) !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .bg-emerald-100\/70 {
+          background-color: rgba(6, 78, 59, 0.45) !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .text-slate-900,
+        .dark .gradebook-gray-selection .gb-header-row .text-slate-800,
+        .dark .gradebook-gray-selection .gb-header-row .text-blue-950,
+        .dark .gradebook-gray-selection .gb-header-row .text-emerald-950 {
+          color: #f8fafc !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .text-blue-700 {
+          color: #93c5fd !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows {
+          background-color: #111827 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-slate-50 {
+          background-color: #162033 !important;
+          color: #cbd5e1 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-blue-50\/40 {
+          background-color: rgba(30, 58, 138, 0.16) !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-emerald-50\/20 {
+          background-color: rgba(6, 78, 59, 0.14) !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-emerald-50\/90 {
+          background-color: rgba(16, 185, 129, 0.2) !important;
+          border-color: rgba(52, 211, 153, 0.45) !important;
+          color: #6ee7b7 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-blue-50\/90 {
+          background-color: rgba(59, 130, 246, 0.2) !important;
+          border-color: rgba(96, 165, 250, 0.45) !important;
+          color: #93c5fd !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-rose-50\/90 {
+          background-color: rgba(244, 63, 94, 0.2) !important;
+          border-color: rgba(251, 113, 133, 0.45) !important;
+          color: #fda4af !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-slate-200 {
+          background-color: #334155 !important;
+          border-color: #64748b !important;
+          color: #f8fafc !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-slate-100 {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-amber-100 {
+          background-color: rgba(245, 158, 11, 0.24) !important;
+          border-color: rgba(251, 191, 36, 0.5) !important;
+          color: #fde68a !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-emerald-100 {
+          background-color: rgba(16, 185, 129, 0.22) !important;
+          border-color: rgba(52, 211, 153, 0.48) !important;
+          color: #a7f3d0 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-teal-100 {
+          background-color: rgba(20, 184, 166, 0.22) !important;
+          border-color: rgba(45, 212, 191, 0.48) !important;
+          color: #99f6e4 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-sky-100 {
+          background-color: rgba(14, 165, 233, 0.22) !important;
+          border-color: rgba(56, 189, 248, 0.48) !important;
+          color: #bae6fd !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-rose-100 {
+          background-color: rgba(244, 63, 94, 0.22) !important;
+          border-color: rgba(251, 113, 133, 0.48) !important;
+          color: #fecdd3 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .hover\:bg-slate-50\/70:hover {
+          background-color: #1a263d !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows input {
+          background-color: transparent !important;
+          border-color: transparent !important;
+        }
+        .dark .gradebook-gray-selection .gb-sheet-footer {
+          background-color: #0f172a !important;
+          border-color: #475569 !important;
+          color: #cbd5e1 !important;
+        }
+        .dark .gradebook-gray-selection .gb-sheet-footer button {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .gradebook-gray-selection .gb-sheet-footer button:hover {
+          background-color: #334155 !important;
+        }
+        .dark .gradebook-gray-selection .gb-sheet-footer .text-slate-900 {
+          color: #f8fafc !important;
+        }
+        .dark .gradebook-gray-selection > footer .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #34d399 !important;
+        }
+        .dark .gradebook-gray-selection > footer .text-slate-800 {
+          color: #f1f5f9 !important;
         }
       `}</style>
       <input
@@ -8016,7 +8190,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* LE TABLEAU MODERNE PROFESSIONNEL (Bordures bien visibles et carrées) */}
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
-                <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
+                <div className="gb-sheet-frame relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
                   {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS */}
                   {(() => {
                     const hdrRank = getHeaderVisualStyles('header_rank');
@@ -8322,7 +8496,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     };
 
                     return (
-                  <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
+                  <div className="gb-header-row flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
                     {visibleColumnOrder.left.map((colKey) => (
                       <React.Fragment key={`hdr-l-${colKey}`}>
                         {peripheralHeaderCells[colKey]}
@@ -8333,11 +8507,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {Array.from({ length: noteColumnCount }).map((_, i) => {
                       const colMeta = columnMetas[i] || { maxScore: 20 };
                       const colTitle = colMeta.title || 'NOTE';
+                      const explicitHeaderFallback = colMeta.headerBgColor || colMeta.columnBgColor || undefined;
                       const hdrNote = getHeaderVisualStyles(
                         `header_note_${i}`,
-                        colMeta.headerBgColor || colMeta.columnBgColor || '#f1f5f9'
+                        explicitHeaderFallback
                       );
-                      const headerBg = hdrNote.containerBg || '#f1f5f9';
+                      const customHeaderBg = hdrNote.containerBg || undefined;
                       const isMovingThis = movingColIndex === i;
                       const isMenuOpen = activeMenuCol === i;
                       const thisColWidth = getColWidth(`col-note-${i}`);
@@ -8349,7 +8524,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             width: `${thisColWidth}px`,
                             minWidth: `${thisColWidth}px`,
                             maxWidth: `${thisColWidth}px`,
-                            backgroundColor: headerBg 
+                            ...(customHeaderBg ? { backgroundColor: customHeaderBg } : {})
                           }}
                           onClick={() => {
                             setActiveCellInfo({
@@ -8365,7 +8540,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
                           }}
                           className={`min-h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
-                            isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                            customHeaderBg ? '' : 'bg-[#f1f5f9] dark:bg-[#1e293b]'
+                          } ${
+                            isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950/60' : ''
                           }`}
                           title={`${colTitle} ${i + 1} (Double-cliquer pour sélectionner le trait vertical)`}
                         >
@@ -8631,7 +8808,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   {/* ================================================================= */}
                   {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES BIEN TRACÉES                   */}
                   {/* ================================================================= */}
-                  <div className="bg-white">
+                  <div className="gb-body-rows bg-white">
                     {studentsWithStats.map((std, rIdx) => {
                       const isRowSelected = activeCellInfo.rowIndex === rIdx;
                       const rowHeight = Math.max(customRowHeights[rIdx] || 44, getRowMinHeightForContent(std));
@@ -9191,7 +9368,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${effectiveColWidthAverage}px`,
                               maxWidth: `${effectiveColWidthAverage}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
+                              backgroundColor: std.hasInvalidNote ? undefined : avgCellBg
                             }}
                             onMouseDown={(e) => {
                               // Empêcher toute sélection de texte ou de case dans la colonne Moyenne
@@ -9275,7 +9452,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${effectiveColWidthMention}px`,
                               maxWidth: `${effectiveColWidthMention}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
+                              backgroundColor: std.hasInvalidNote ? undefined : mentionCellBg
                             }}
                             onMouseDown={(e) => {
                               // Empêcher toute sélection de texte ou de case dans la colonne Mention
@@ -9598,7 +9775,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       textDecoration: isInvalid ? 'underline' : noteCellStyle.textDecoration,
                                       fontFamily: noteCellStyle.fontFamily,
                                       fontSize: noteCellStyle.fontSize,
-                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617'),
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || undefined),
                                       backgroundColor: 'transparent',
                                       textAlign: 'right'
                                     } : {
@@ -9610,7 +9787,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         ? 'underline font-black decoration-red-600 decoration-2'
                                         : noteCellStyle.color
                                         ? ''
-                                        : 'focus:text-blue-700'
+                                        : 'text-slate-950 dark:text-slate-100 focus:text-blue-700 dark:focus:text-sky-300'
                                     }`}
                                   />
 
@@ -9622,10 +9799,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       textDecoration: noteCellStyle.textDecoration,
                                       fontFamily: noteCellStyle.fontFamily,
                                       fontSize: noteCellStyle.fontSize,
-                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617')
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || undefined)
                                     }}
                                     className={`px-0.5 text-xs sm:text-sm select-none pointer-events-none ${
-                                      isInvalid ? 'text-red-600 font-black' : 'text-slate-900'
+                                      isInvalid ? 'text-red-600 dark:text-rose-400 font-black' : 'text-slate-900 dark:text-slate-300'
                                     }`}
                                   >
                                     /
@@ -9680,12 +9857,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       textDecoration: noteCellStyle.textDecoration,
                                       fontFamily: noteCellStyle.fontFamily,
                                       fontSize: noteCellStyle.fontSize,
-                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617'),
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || undefined),
                                       backgroundColor: 'transparent',
                                       textAlign: 'left'
                                     }}
-                                    className={`w-[44%] min-w-0 text-left text-xs sm:text-sm transition outline-none bg-transparent cursor-text placeholder:text-slate-300 ${
-                                      noteCellStyle.color ? '' : 'text-slate-900 hover:text-blue-700 focus:text-blue-700'
+                                    className={`w-[44%] min-w-0 text-left text-xs sm:text-sm transition outline-none bg-transparent cursor-text placeholder:text-slate-300 dark:placeholder:text-slate-500 ${
+                                      noteCellStyle.color ? '' : 'text-slate-900 dark:text-slate-200 hover:text-blue-700 dark:hover:text-sky-300 focus:text-blue-700 dark:focus:text-sky-300'
                                     }`}
                                     title="Barème maximal modifiable librement (ex: 10, 20, 30, 40, 100...)"
                                   />
@@ -9734,7 +9911,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
 
                   {/* PIED DU TABLEAU : BOUTON AJOUTER UN ÉLÈVE & COMPTEUR */}
-                  <div className="p-2 bg-[#f8fafc] border-t-2 border-slate-900 flex items-center justify-between">
+                  <div className="gb-sheet-footer p-2 bg-[#f8fafc] border-t-2 border-slate-900 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={handleAddStudentRow}
@@ -9791,14 +9968,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
                 </div>
 
-                {/* Cases de fond à droite */}
+                  {/* Cases de fond à droite */}
                 <div className="flex shrink-0">
                   {Array.from({ length: RIGHT_EXTRA_COLS }).map((_, c) => (
                     <div key={`right-grid-col-${c}`} className="flex flex-col">
                       {Array.from({ length: studentsWithStats.length + 3 }).map((_, r) => (
                         <div 
                           key={`right-grid-cell-${c}-${r}`}
-                          className="w-16 h-11 border-r border-b border-slate-300 bg-white"
+                          className="gb-excel-margin w-16 h-11 border-r border-b border-slate-300 bg-white"
                         />
                       ))}
                     </div>
@@ -9813,7 +9990,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {Array.from({ length: backgroundColCount }).map((_, c) => (
                       <div 
                         key={`bottom-grid-cell-${r}-${c}`}
-                        className="w-16 h-6 border-r border-b border-slate-300 bg-white"
+                        className="gb-excel-margin w-16 h-6 border-r border-b border-slate-300 bg-white"
                       />
                     ))}
                   </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
@@ -159,7 +159,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
   // Popover "Moyenne générale" en bas de la barre latérale de l'ÉCOLE (accès rapide par classe)
   const [isSchoolAvgMenuOpen, setIsSchoolAvgMenuOpen] = useState(false);
-  const schoolAvgBtnRef = useRef<HTMLButtonElement>(null);
+  const [schoolAvgAnchorEl, setSchoolAvgAnchorEl] = useState<HTMLElement | null>(null);
 
   const filteredClasses = classSearch.trim()
     ? levelClasses.filter((c) => {
@@ -520,9 +520,14 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       <div className="shrink-0 border-t border-slate-300 dark:border-slate-700 bg-[#f8fafc] dark:bg-[#0d1424] px-2.5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
         {!enteredClass ? (
           <button
-            ref={schoolAvgBtnRef}
             type="button"
-            onClick={() => setIsSchoolAvgMenuOpen((prev) => !prev)}
+            data-school-avg-trigger="true"
+            onClick={(e) => {
+              e.stopPropagation();
+              const triggerEl = e.currentTarget;
+              setSchoolAvgAnchorEl(triggerEl);
+              setIsSchoolAvgMenuOpen((prev) => !prev);
+            }}
             disabled={levelClasses.length === 0}
             className={`w-full h-8 px-2.5 rounded-md border text-xs font-semibold flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
               isSchoolAvgMenuOpen
@@ -1394,12 +1399,13 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       {/* POPOVER RAPIDE "MOYENNE GÉNÉRALE" DEPUIS LA BARRE LATÉRALE DE L'ÉCOLE */}
       <SmartFloatingPopover
         open={isSchoolAvgMenuOpen && !enteredClass}
-        anchorEl={schoolAvgBtnRef.current}
+        anchorEl={schoolAvgAnchorEl}
         boundaryEl={boundaryRef.current}
         preferredSide={typeof window !== 'undefined' && window.innerWidth < 768 ? 'top' : 'right'}
         preferredAlign={typeof window !== 'undefined' && window.innerWidth < 768 ? 'start' : 'end'}
         gap={8}
         zIndex={100025}
+        ignoreOutsideSelector="[data-school-avg-trigger='true']"
         onClose={() => setIsSchoolAvgMenuOpen(false)}
         dataPopoverId="school-sidebar-averages-popover"
         className="w-[248px] sm:w-72 max-w-[calc(100vw-24px)] rounded-xl"

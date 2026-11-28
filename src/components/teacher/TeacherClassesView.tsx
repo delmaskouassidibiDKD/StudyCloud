@@ -3477,6 +3477,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           onSelectTerm={(termId) => setSelectedTermId(termId)}
           onOpenSubject={(subject) => setSelectedSubjectInside(subject)}
           onOpenAverageCard={(card, cls) => {
+            setIsTransferViewOpen(false);
             setSelectedClassId(cls.id);
             setSelectedAverageCardInside(card);
           }}
@@ -3608,7 +3609,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   onBack();
                 }
               }}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-[11px] sm:text-xs cursor-pointer shrink-0"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl bg-white/85 hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-100 hover:text-[#00313d] dark:hover:text-white border border-white/95 dark:border-slate-600/80 shadow-xs transition active:scale-95 font-bold text-[11px] sm:text-xs cursor-pointer shrink-0"
               title={
                 isTransferViewOpen
                   ? "Retour à l'établissement"
@@ -3625,14 +3626,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             <div
               className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl text-[10px] sm:text-[11px] font-bold border transition-all select-none whitespace-nowrap ${
                 saveUiState === 'saving' || cloudStatus === 'loading'
-                  ? 'bg-amber-50/90 text-amber-800 border-amber-200/80'
+                  ? 'bg-amber-50/90 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 border-amber-200/80 dark:border-amber-500/40'
                   : saveUiState === 'saved'
-                  ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200/90'
+                  ? 'bg-emerald-50/95 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-200 border-emerald-200/90 dark:border-emerald-500/40'
                   : saveUiState === 'offline' || !isOnline
-                  ? 'bg-red-50 text-red-700 border-red-200'
+                  ? 'bg-red-50 dark:bg-red-950/70 text-red-700 dark:text-red-200 border-red-200 dark:border-red-500/40'
                   : saveUiState === 'error' || cloudStatus === 'error'
-                  ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-white/90 text-slate-700 border-white shadow-xs'
+                  ? 'bg-red-50 dark:bg-red-950/70 text-red-700 dark:text-red-200 border-red-200 dark:border-red-500/40'
+                  : 'bg-white/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-100 border-white dark:border-slate-600/80 shadow-xs'
               }`}
               title={saveFeedbackMessage || 'Synchronisation automatique avec le cloud StudyCloud'}
             >

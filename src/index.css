@@ -1180,20 +1180,106 @@ body {
 }
 
 /* Mode Sombre complet & bordures nettes pour les modales, popovers et vues Transfert Enseignant */
+.dark .teacher-dark-scope {
+  color-scheme: dark;
+  color: #f1f5f9;
+}
 .dark .teacher-dark-scope .bg-white,
 .dark .teacher-dark-scope .bg-white\/95,
-.dark .teacher-dark-scope .bg-white\/90 {
+.dark .teacher-dark-scope .bg-white\/90,
+.dark .teacher-dark-scope .bg-white\/85,
+.dark .teacher-dark-scope .bg-white\/80,
+.dark .teacher-dark-scope .bg-white\/75,
+.dark .teacher-dark-scope .bg-white\/70 {
   background-color: #111827 !important;
 }
 .dark .teacher-dark-scope .bg-slate-50,
+.dark .teacher-dark-scope .bg-slate-50\/95,
+.dark .teacher-dark-scope .bg-slate-50\/90,
 .dark .teacher-dark-scope .bg-slate-50\/80,
+.dark .teacher-dark-scope .bg-slate-50\/70,
 .dark .teacher-dark-scope .bg-slate-50\/60,
-.dark .teacher-dark-scope .bg-\[\#f8fafc\] {
-  background-color: #161f33 !important;
+.dark .teacher-dark-scope .bg-slate-50\/50,
+.dark .teacher-dark-scope .bg-slate-50\/40,
+.dark .teacher-dark-scope .bg-\[\#f8fafc\],
+.dark .teacher-dark-scope .bg-\[\#f9fafb\],
+.dark .teacher-dark-scope .bg-\[\#f3f4f6\],
+.dark .teacher-dark-scope .bg-\[\#f3f5f8\],
+.dark .teacher-dark-scope .bg-\[\#eef2f6\] {
+  background-color: #0f172a !important;
 }
 .dark .teacher-dark-scope .bg-slate-100,
-.dark .teacher-dark-scope .bg-slate-100\/80 {
+.dark .teacher-dark-scope .bg-slate-100\/90,
+.dark .teacher-dark-scope .bg-slate-100\/80,
+.dark .teacher-dark-scope .bg-slate-100\/60,
+.dark .teacher-dark-scope .bg-\[\#f1f5f9\] {
   background-color: #1e293b !important;
+}
+.dark .teacher-dark-scope .bg-slate-200,
+.dark .teacher-dark-scope .bg-slate-200\/90,
+.dark .teacher-dark-scope .bg-slate-200\/80,
+.dark .teacher-dark-scope .bg-slate-200\/70,
+.dark .teacher-dark-scope .bg-slate-300 {
+  background-color: #263449 !important;
+  color: #cbd5e1 !important;
+}
+.dark .teacher-dark-scope .bg-blue-50,
+.dark .teacher-dark-scope .bg-blue-50\/70,
+.dark .teacher-dark-scope .bg-blue-50\/60,
+.dark .teacher-dark-scope .bg-blue-50\/50,
+.dark .teacher-dark-scope .bg-sky-50,
+.dark .teacher-dark-scope .bg-cyan-50,
+.dark .teacher-dark-scope .bg-indigo-50,
+.dark .teacher-dark-scope .bg-indigo-50\/70 {
+  background-color: rgba(30, 58, 138, 0.34) !important;
+  border-color: rgba(96, 165, 250, 0.45) !important;
+}
+.dark .teacher-dark-scope .bg-emerald-50,
+.dark .teacher-dark-scope .bg-emerald-50\/95,
+.dark .teacher-dark-scope .bg-emerald-50\/90,
+.dark .teacher-dark-scope .bg-emerald-50\/80,
+.dark .teacher-dark-scope .bg-emerald-100,
+.dark .teacher-dark-scope .bg-teal-50 {
+  background-color: rgba(6, 78, 59, 0.42) !important;
+  border-color: rgba(52, 211, 153, 0.45) !important;
+}
+.dark .teacher-dark-scope .bg-amber-50,
+.dark .teacher-dark-scope .bg-amber-50\/90,
+.dark .teacher-dark-scope .bg-amber-50\/50,
+.dark .teacher-dark-scope .bg-amber-100,
+.dark .teacher-dark-scope .bg-orange-50,
+.dark .teacher-dark-scope .bg-orange-100 {
+  background-color: rgba(120, 53, 15, 0.38) !important;
+  border-color: rgba(251, 191, 36, 0.45) !important;
+}
+.dark .teacher-dark-scope .bg-red-50,
+.dark .teacher-dark-scope .bg-red-50\/95,
+.dark .teacher-dark-scope .bg-red-50\/70,
+.dark .teacher-dark-scope .bg-rose-50,
+.dark .teacher-dark-scope .bg-rose-50\/60 {
+  background-color: rgba(127, 29, 29, 0.4) !important;
+  border-color: rgba(248, 113, 113, 0.45) !important;
+}
+.dark .teacher-dark-scope .hover\:bg-slate-50:hover,
+.dark .teacher-dark-scope .hover\:bg-slate-100:hover,
+.dark .teacher-dark-scope .hover\:bg-slate-200:hover,
+.dark .teacher-dark-scope .hover\:bg-white:hover,
+.dark .teacher-dark-scope .hover\:bg-white\/90:hover {
+  background-color: #263449 !important;
+}
+.dark .teacher-dark-scope .hover\:bg-blue-50:hover,
+.dark .teacher-dark-scope .hover\:bg-sky-50:hover {
+  background-color: rgba(30, 58, 138, 0.45) !important;
+}
+.dark .teacher-dark-scope .hover\:bg-emerald-50:hover {
+  background-color: rgba(6, 78, 59, 0.5) !important;
+}
+.dark .teacher-dark-scope .hover\:bg-amber-50:hover {
+  background-color: rgba(120, 53, 15, 0.5) !important;
+}
+.dark .teacher-dark-scope .hover\:bg-red-50:hover,
+.dark .teacher-dark-scope .hover\:bg-red-100:hover {
+  background-color: rgba(127, 29, 29, 0.55) !important;
 }
 .dark .teacher-dark-scope .from-slate-50 {
   --tw-gradient-from: #161f33 !important;
@@ -1203,8 +1289,14 @@ body {
 }
 .dark .teacher-dark-scope .border-slate-100,
 .dark .teacher-dark-scope .border-slate-200,
+.dark .teacher-dark-scope .border-slate-200\/90,
+.dark .teacher-dark-scope .border-slate-200\/80,
 .dark .teacher-dark-scope .border-slate-300 {
-  border-color: #475569 !important;
+  border-color: #334155 !important;
+}
+.dark .teacher-dark-scope .border-slate-800,
+.dark .teacher-dark-scope .border-slate-900 {
+  border-color: #60a5fa !important;
 }
 .dark .teacher-dark-scope .text-slate-900,
 .dark .teacher-dark-scope .text-slate-800,
@@ -1218,10 +1310,41 @@ body {
 .dark .teacher-dark-scope .text-slate-500 {
   color: #94a3b8 !important;
 }
-.dark .teacher-dark-scope input:not([type="color"]),
+.dark .teacher-dark-scope .text-blue-700,
+.dark .teacher-dark-scope .text-blue-800,
+.dark .teacher-dark-scope .text-indigo-800,
+.dark .teacher-dark-scope .text-sky-700,
+.dark .teacher-dark-scope .text-cyan-800 {
+  color: #93c5fd !important;
+}
+.dark .teacher-dark-scope .text-emerald-700,
+.dark .teacher-dark-scope .text-emerald-800,
+.dark .teacher-dark-scope .text-teal-800 {
+  color: #6ee7b7 !important;
+}
+.dark .teacher-dark-scope .text-amber-700,
+.dark .teacher-dark-scope .text-amber-800,
+.dark .teacher-dark-scope .text-amber-900 {
+  color: #fcd34d !important;
+}
+.dark .teacher-dark-scope .text-red-600,
+.dark .teacher-dark-scope .text-red-700,
+.dark .teacher-dark-scope .text-rose-700 {
+  color: #fda4af !important;
+}
+.dark .teacher-dark-scope input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
 .dark .teacher-dark-scope select,
 .dark .teacher-dark-scope textarea {
   background-color: #1e293b !important;
   border-color: #475569 !important;
   color: #f1f5f9 !important;
+}
+.dark .teacher-dark-scope input[type="checkbox"],
+.dark .teacher-dark-scope input[type="radio"] {
+  accent-color: #38bdf8;
+  color-scheme: dark;
+}
+html.dark,
+body.dark {
+  color-scheme: dark;
 }
