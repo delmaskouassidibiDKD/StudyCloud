@@ -6653,7 +6653,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         .dark .gradebook-gray-selection > header .bg-slate-100,
         .dark .gradebook-gray-selection > header .bg-slate-200,
         .dark .gradebook-gray-selection > header .bg-white,
-        .dark .gradebook-gray-selection > section .bg-\[\#f9fafb\],
+        .dark .gradebook-gray-selection > section [class*="bg-[#f9fafb]"],
         .dark .gradebook-gray-selection > section .bg-slate-50,
         .dark .gradebook-gray-selection > section .bg-slate-100,
         .dark .gradebook-gray-selection > section .bg-slate-200,
@@ -6683,6 +6683,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           color: #7dd3fc !important;
         }
         .dark .gradebook-gray-selection > header svg,
+        .dark .gradebook-gray-selection > header .text-slate-700,
+        .dark .gradebook-gray-selection > header .text-slate-800,
         .dark .gradebook-gray-selection > section .text-slate-700,
         .dark .gradebook-gray-selection > section .text-slate-800 {
           color: #e2e8f0 !important;
@@ -6717,15 +6719,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           border-color: #64748b !important;
           color: #f8fafc !important;
         }
-        .dark .gradebook-gray-selection .gb-header-row .bg-\[\#f1f5f9\],
-        .dark .gradebook-gray-selection .gb-header-row .bg-slate-200\/70 {
+        .dark .gradebook-gray-selection .gb-header-row [class*="bg-[#f1f5f9]"],
+        .dark .gradebook-gray-selection .gb-header-row [class*="bg-slate-200/70"] {
           background-color: #1e293b !important;
           color: #f8fafc !important;
         }
-        .dark .gradebook-gray-selection .gb-header-row .bg-blue-100\/70 {
+        .dark .gradebook-gray-selection .gb-header-row [class*="bg-blue-100/70"] {
           background-color: rgba(30, 58, 138, 0.45) !important;
         }
-        .dark .gradebook-gray-selection .gb-header-row .bg-emerald-100\/70 {
+        .dark .gradebook-gray-selection .gb-header-row [class*="bg-emerald-100/70"] {
           background-color: rgba(6, 78, 59, 0.45) !important;
         }
         .dark .gradebook-gray-selection .gb-header-row .text-slate-900,
@@ -6734,35 +6736,63 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         .dark .gradebook-gray-selection .gb-header-row .text-emerald-950 {
           color: #f8fafc !important;
         }
+        .dark .gradebook-gray-selection .gb-header-row .text-slate-500 {
+          color: #94a3b8 !important;
+        }
         .dark .gradebook-gray-selection .gb-header-row .text-blue-700 {
           color: #93c5fd !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .gb-menu-trigger,
+        .dark .gradebook-gray-selection .gb-header-row .gb-menu-trigger svg,
+        .dark .gradebook-gray-selection .gb-body-rows .gb-menu-trigger,
+        .dark .gradebook-gray-selection .gb-body-rows .gb-menu-trigger svg {
+          color: #94a3b8 !important;
+        }
+        .dark .gradebook-gray-selection .gb-header-row .gb-menu-trigger:hover,
+        .dark .gradebook-gray-selection .gb-body-rows .gb-menu-trigger:hover {
+          background-color: #334155 !important;
+          color: #f8fafc !important;
         }
         .dark .gradebook-gray-selection .gb-body-rows {
           background-color: #111827 !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-slate-50 {
+        .dark .gradebook-gray-selection .gb-body-rows .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows .bg-slate-50,
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-slate-50/60"] {
           background-color: #162033 !important;
           color: #cbd5e1 !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-blue-50\/40 {
-          background-color: rgba(30, 58, 138, 0.16) !important;
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-slate-50/60"] .text-slate-200 {
+          color: #475569 !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-emerald-50\/20 {
-          background-color: rgba(6, 78, 59, 0.14) !important;
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-blue-50/40"] {
+          background-color: rgba(30, 58, 138, 0.22) !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-emerald-50\/90 {
-          background-color: rgba(16, 185, 129, 0.2) !important;
-          border-color: rgba(52, 211, 153, 0.45) !important;
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-blue-50/30"] {
+          background-color: rgba(30, 58, 138, 0.28) !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-emerald-50/40"] {
+          background-color: rgba(6, 78, 59, 0.28) !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-emerald-50/20"] {
+          background-color: rgba(6, 78, 59, 0.16) !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-emerald-50/90"] {
+          background-color: rgba(16, 185, 129, 0.22) !important;
+          border-color: rgba(52, 211, 153, 0.48) !important;
           color: #6ee7b7 !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-blue-50\/90 {
-          background-color: rgba(59, 130, 246, 0.2) !important;
-          border-color: rgba(96, 165, 250, 0.45) !important;
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-blue-50/90"] {
+          background-color: rgba(59, 130, 246, 0.22) !important;
+          border-color: rgba(96, 165, 250, 0.48) !important;
           color: #93c5fd !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .bg-rose-50\/90 {
-          background-color: rgba(244, 63, 94, 0.2) !important;
-          border-color: rgba(251, 113, 133, 0.45) !important;
+        .dark .gradebook-gray-selection .gb-body-rows [class*="bg-rose-50/90"] {
+          background-color: rgba(244, 63, 94, 0.22) !important;
+          border-color: rgba(251, 113, 133, 0.48) !important;
           color: #fda4af !important;
         }
         .dark .gradebook-gray-selection .gb-body-rows .bg-slate-200 {
@@ -6800,8 +6830,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           border-color: rgba(251, 113, 133, 0.48) !important;
           color: #fecdd3 !important;
         }
-        .dark .gradebook-gray-selection .gb-body-rows .hover\:bg-slate-50\/70:hover {
+        .dark .gradebook-gray-selection .gb-body-rows [class*="hover:bg-slate-50/70"]:hover {
           background-color: #1a263d !important;
+        }
+        .dark .gradebook-gray-selection .gb-body-rows [class*="hover:bg-blue-50/70"]:hover {
+          background-color: rgba(30, 58, 138, 0.35) !important;
         }
         .dark .gradebook-gray-selection .gb-body-rows input {
           background-color: transparent !important;

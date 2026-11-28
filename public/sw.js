@@ -3,7 +3,7 @@
 // Conçu par DKD Technologies pour StudyCloud
 // ============================================================================
 
-const CACHE_NAME = 'studycloud-pwa-v62';
+const CACHE_NAME = 'studycloud-pwa-v63';
 
 // Liste injectée automatiquement à chaque build Vite (contient index-*.js, vendor-react-*.js, index-*.css...)
 const BUILD_APP_ASSETS = [];

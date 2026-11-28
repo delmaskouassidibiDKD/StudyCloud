@@ -2796,14 +2796,27 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         .dark .term-avg-sheet > header .bg-slate-100,
         .dark .term-avg-sheet > header .bg-slate-200,
         .dark .term-avg-sheet > header .bg-white,
-        .dark .term-avg-sheet > section .bg-\[\#f9fafb\],
-        .dark .term-avg-sheet > section .bg-slate-50\/60,
+        .dark .term-avg-sheet > section [class*="bg-[#f9fafb]"],
         .dark .term-avg-sheet > section .bg-slate-50,
         .dark .term-avg-sheet > section .bg-slate-100,
         .dark .term-avg-sheet > section .bg-white {
           background-color: #1e293b !important;
           border-color: #475569 !important;
           color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet > section [class*="bg-slate-50/60"] {
+          background-color: #0f172a !important;
+          border: 1px solid #334155 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet > section .bg-blue-100 {
+          background-color: rgba(30, 58, 138, 0.55) !important;
+          color: #93c5fd !important;
+        }
+        .dark .term-avg-sheet > section .bg-amber-50 {
+          background-color: rgba(120, 53, 15, 0.45) !important;
+          border-color: rgba(251, 191, 36, 0.5) !important;
+          color: #fde68a !important;
         }
         .dark .term-avg-sheet > header .bg-emerald-50 {
           background-color: rgba(6, 78, 59, 0.45) !important;
@@ -2854,6 +2867,19 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         .dark .term-avg-sheet .term-avg-table-card td {
           border-color: #334155 !important;
           color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td button,
+        .dark .term-avg-sheet .term-avg-table-card td input {
+          color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td button:hover {
+          color: #7dd3fc !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td.text-red-600 {
+          color: #fda4af !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td .text-slate-300 {
+          color: #64748b !important;
         }
         .dark .term-avg-sheet .term-avg-table-card tbody tr {
           background-color: #111827 !important;
@@ -2914,10 +2940,38 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           border-color: #334155 !important;
           color: #cbd5e1 !important;
         }
+        .dark .term-avg-sheet .term-avg-bottom-bar .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar .bg-white strong {
+          color: #ffffff !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar .bg-emerald-50 {
+          background-color: rgba(6, 78, 59, 0.45) !important;
+          border-color: rgba(52, 211, 153, 0.45) !important;
+          color: #6ee7b7 !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar .bg-red-50 {
+          background-color: rgba(127, 29, 29, 0.48) !important;
+          border-color: rgba(248, 113, 113, 0.48) !important;
+          color: #fda4af !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar .bg-blue-50 {
+          background-color: rgba(30, 58, 138, 0.45) !important;
+          border-color: rgba(96, 165, 250, 0.48) !important;
+          color: #93c5fd !important;
+        }
         .dark .term-avg-sheet .term-avg-bottom-bar button {
           background-color: #1e293b !important;
           border-color: #475569 !important;
           color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet > footer .bg-white {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f8fafc !important;
         }
       `}</style>
       {/* ========================================================================= */}
@@ -4195,7 +4249,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                             }
                                             style={getCellTextOverrideStyle(cellKey)}
                                             placeholder="Nom et prénom de l'élève..."
-                                            className="w-full bg-transparent text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 placeholder:font-normal"
+                                            className="w-full bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 outline-none placeholder:text-slate-400 placeholder:font-normal"
                                           />
                                         ) : (
                                           <button
@@ -4205,7 +4259,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                               setPreviewStudent(student);
                                             }}
                                             style={getCellTextOverrideStyle(cellKey)}
-                                            className="text-left text-xs font-bold text-slate-800 hover:text-blue-700 transition truncate cursor-pointer w-full"
+                                            className="text-left text-xs font-bold text-slate-800 dark:text-slate-100 hover:text-blue-700 dark:hover:text-sky-300 transition truncate cursor-pointer w-full"
                                             title="Voir le récapitulatif complet de l'élève"
                                           >
                                             {student.name || 'Élève sans nom'}
